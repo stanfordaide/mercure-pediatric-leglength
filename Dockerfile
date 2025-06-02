@@ -1,6 +1,7 @@
 # Set base image to python:3.12.3-slim-bookworm using index digest hash to fix version
 # This version of python:3.12.3-slim-bookworm has OS: Debian 12 (bookworm) and python: 3.12.3
-FROM --platform=linux/amd64 python@sha256:2be8daddbb82756f7d1f2c7ece706aadcb284bf6ab6d769ea695cc3ed6016743
+# Use --platform=linux/arm64 for Apple Silicon Macs, or remove --platform for auto-detection
+FROM python@sha256:2be8daddbb82756f7d1f2c7ece706aadcb284bf6ab6d769ea695cc3ed6016743
 
 # Environment variables for better container behavior
 ENV PYTHONUNBUFFERED=1 \
@@ -10,7 +11,8 @@ ENV PYTHONUNBUFFERED=1 \
     LC_ALL=C.UTF-8 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    TORCH_HOME=/flywheel/v0/.cache
 
 # Flywheel spec (v0)
 ENV FLYWHEEL=/flywheel/v0
@@ -34,6 +36,12 @@ RUN apt-get update -qq && \
         wget \
         curl \
         ca-certificates \
+        libgl1-mesa-glx \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender-dev \
+        libgomp1 \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -42,11 +50,10 @@ RUN apt-get update -qq && \
 COPY requirements.txt ${FLYWHEEL}/requirements.txt
 RUN pip3 install --upgrade pip setuptools wheel && \
     pip3 install flywheel-sdk && \
-    pip3 install -r requirements.txt && \
-    pip3 cache purge
+    pip3 install -r requirements.txt
 
-# Create models directory
-RUN mkdir -p ${FLYWHEEL}/models
+# Create models and cache directories
+RUN mkdir -p ${FLYWHEEL}/models ${FLYWHEEL}/.cache
 
 # Copy the application files
 COPY leglength ${FLYWHEEL}/leglength
@@ -54,6 +61,7 @@ COPY download_models.py ${FLYWHEEL}/download_models.py
 COPY run.py ${FLYWHEEL}/run.py
 
 # Download all model checkpoints
+# Note: Comment out if you want to download models at runtime instead
 RUN python3 download_models.py
 
 # Set proper ownership and permissions
@@ -68,7 +76,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 USER flywheel
 
 # Add labels for better container management
-LABEL maintainer="flywheel" \
+LABEL maintainer="Arogya Koirala" \
       description="Leg Length Analysis Gear" \
       version="1.0" \
       org.opencontainers.image.title="fw-leglength" \

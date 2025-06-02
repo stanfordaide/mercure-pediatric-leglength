@@ -16,20 +16,22 @@ logger = logging.getLogger(__name__)
 class LegLengthDetector:
     """Detector for leg length measurements using Faster R-CNN."""
     
-    def __init__(self, backbone_name='resnext101_32x8d', num_classes=9, pretrained=True):
+    def __init__(self, backbone_name='resnext101_32x8d', num_classes=9, weights='DEFAULT'):
         """
         Initialize the leg length detector.
         
         Args:
             backbone_name (str): Name of the backbone model to use
-            num_classes (int): Number of classes (including background)
-            pretrained (bool): Whether to use pretrained weights
+            num_classes (int): Number of classes to detect (default: 9 for 8 landmarks + background)
+            weights (str): Pre-trained weights to use ('DEFAULT', 'IMAGENET1K_V1', or None)
         """
         self.backbone_name = backbone_name
         self.num_classes = num_classes
-        self.pretrained = pretrained
-        self.model = self._create_model()
+        self.weights = weights
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        self.model = self._create_model()
+        
         self.model.to(self.device)
     
     def _create_model(self):
@@ -42,25 +44,25 @@ class LegLengthDetector:
         # Available backbones directly from torchvision.models.detection
         if self.backbone_name == "resnet50":
             model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
-                pretrained=self.pretrained,
+                weights=self.weights,
                 pretrained_backbone=True
             )
             model = _modify_classifier(model, self.num_classes)
         elif self.backbone_name == "mobilenet_v3_large":
             model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(
-                pretrained=self.pretrained,
+                weights=self.weights,
                 pretrained_backbone=True
             )
             model = _modify_classifier(model, self.num_classes)
         elif self.backbone_name == "mobilenet_v3_large_320":
             model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
-                pretrained=self.pretrained,
+                weights=self.weights,
                 pretrained_backbone=True
             )
             model = _modify_classifier(model, self.num_classes)
         elif self.backbone_name == "resnet50_fpn_v2":
             model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(
-                pretrained=self.pretrained,
+                weights=self.weights,
                 pretrained_backbone=True
             )
             model = _modify_classifier(model, self.num_classes)
@@ -68,7 +70,7 @@ class LegLengthDetector:
         # Custom backbones requiring manual integration
         elif self.backbone_name in ["resnet18", "resnet34", "resnet101", "resnet152"]:
             backbone_fn = getattr(torchvision.models, self.backbone_name)
-            backbone_model = backbone_fn(pretrained=self.pretrained)
+            backbone_model = backbone_fn(weights=self.weights)
             backbone_layers = list(backbone_model.children())[:-2]
             backbone = torch.nn.Sequential(*backbone_layers)
             backbone.out_channels = 512 if self.backbone_name in ["resnet18", "resnet34"] else 2048
@@ -76,19 +78,19 @@ class LegLengthDetector:
             model = self._create_custom_fasterrcnn(backbone)
             
         elif self.backbone_name == "mobilenet_v2":
-            backbone = torchvision.models.mobilenet_v2(pretrained=self.pretrained).features
+            backbone = torchvision.models.mobilenet_v2(weights=self.weights).features
             backbone.out_channels = 1280
             model = self._create_custom_fasterrcnn(backbone)
             
         elif self.backbone_name == "efficientnet_b0":
-            backbone = torchvision.models.efficientnet_b0(pretrained=self.pretrained).features
+            backbone = torchvision.models.efficientnet_b0(weights=self.weights).features
             backbone.out_channels = 1280
             model = self._create_custom_fasterrcnn(backbone)
             
         # ConvNeXt models
         elif self.backbone_name in ["convnext_tiny", "convnext_small", "convnext_base", "convnext_large"]:
             backbone_fn = getattr(torchvision.models, self.backbone_name)
-            backbone_model = backbone_fn(pretrained=self.pretrained)
+            backbone_model = backbone_fn(weights=self.weights)
             
             out_channels = 768  # default for tiny and small
             if self.backbone_name == "convnext_base":
@@ -103,7 +105,7 @@ class LegLengthDetector:
         # ResNeXt models
         elif self.backbone_name in ["resnext50_32x4d", "resnext101_32x8d", "resnext101_64x4d"]:
             backbone_fn = getattr(torchvision.models, self.backbone_name)
-            backbone_model = backbone_fn(pretrained=self.pretrained)
+            backbone_model = backbone_fn(weights=self.weights)
             backbone_layers = list(backbone_model.children())[:-2]
             backbone = torch.nn.Sequential(*backbone_layers)
             backbone.out_channels = 2048
@@ -112,7 +114,7 @@ class LegLengthDetector:
         # DenseNet models
         elif self.backbone_name in ["densenet121", "densenet169", "densenet201"]:
             backbone_fn = getattr(torchvision.models, self.backbone_name)
-            backbone_model = backbone_fn(pretrained=self.pretrained)
+            backbone_model = backbone_fn(weights=self.weights)
             
             out_channels = 1024  # default for densenet121
             if self.backbone_name == "densenet169":
@@ -202,7 +204,7 @@ class LegLengthDetector:
             logger.info(f"No metadata found in checkpoint, using default num_classes: {num_classes}")
         
         # Create model with specified backbone
-        model = LegLengthDetector(backbone_name=backbone_name, num_classes=num_classes, pretrained=True)
+        model = LegLengthDetector(backbone_name=backbone_name, num_classes=num_classes, weights='DEFAULT')
         model.model.load_state_dict(checkpoint['model_state_dict'])
         model.model.to(device)
         

@@ -7,6 +7,6 @@ pydicom>=2.4.4
 opencv-python>=4.10.0
 matplotlib>=3.8.0
 pillow>=10.0.0
-wget>=3.2
+requests>=2.28.0
 tqdm>=4.67.1
 pycocotools>=2.0.8

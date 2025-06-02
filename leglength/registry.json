@@ -1,0 +1,3 @@
+{
+  "resnext101_32x8d": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.1.0/resnext101_32x8d.pth"
+} 

@@ -85,8 +85,7 @@ data/*.dicom
 visualize_predictions.py
 setup_env.sh
 
-# Duplicate Files
-registry.json
+
 
 # macOS
 .DS_Store

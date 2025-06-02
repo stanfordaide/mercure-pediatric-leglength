@@ -1,7 +1,108 @@
 import json
 import os
-import wget
+import time
+import requests
+import torch
+import torchvision.models
 from pathlib import Path
+from tqdm import tqdm
+
+def download_backbone_weights(model_name):
+    """Pre-download torchvision backbone weights for a specific model."""
+    try:
+        print(f"🏗️  Pre-downloading backbone weights for: {model_name}")
+        
+        # Map model names to torchvision functions
+        backbone_map = {
+            # Direct torchvision detection models
+            "resnet50": lambda: torchvision.models.detection.fasterrcnn_resnet50_fpn(weights='DEFAULT'),
+            "mobilenet_v3_large": lambda: torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights='DEFAULT'),
+            "mobilenet_v3_large_320": lambda: torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(weights='DEFAULT'),
+            "resnet50_fpn_v2": lambda: torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(weights='DEFAULT'),
+            
+            # Custom backbone models
+            "resnet18": lambda: torchvision.models.resnet18(weights='DEFAULT'),
+            "resnet34": lambda: torchvision.models.resnet34(weights='DEFAULT'),
+            "resnet101": lambda: torchvision.models.resnet101(weights='DEFAULT'),
+            "resnet152": lambda: torchvision.models.resnet152(weights='DEFAULT'),
+            "mobilenet_v2": lambda: torchvision.models.mobilenet_v2(weights='DEFAULT'),
+            "efficientnet_b0": lambda: torchvision.models.efficientnet_b0(weights='DEFAULT'),
+            "convnext_tiny": lambda: torchvision.models.convnext_tiny(weights='DEFAULT'),
+            "convnext_small": lambda: torchvision.models.convnext_small(weights='DEFAULT'),
+            "convnext_base": lambda: torchvision.models.convnext_base(weights='DEFAULT'),
+            "convnext_large": lambda: torchvision.models.convnext_large(weights='DEFAULT'),
+            "resnext50_32x4d": lambda: torchvision.models.resnext50_32x4d(weights='DEFAULT'),
+            "resnext101_32x8d": lambda: torchvision.models.resnext101_32x8d(weights='DEFAULT'),
+            "resnext101_64x4d": lambda: torchvision.models.resnext101_64x4d(weights='DEFAULT'),
+            "densenet121": lambda: torchvision.models.densenet121(weights='DEFAULT'),
+            "densenet169": lambda: torchvision.models.densenet169(weights='DEFAULT'),
+            "densenet201": lambda: torchvision.models.densenet201(weights='DEFAULT'),
+        }
+        
+        if model_name in backbone_map:
+            # This will trigger the download and cache the weights
+            model = backbone_map[model_name]()
+            print(f"✅ Cached backbone weights for: {model_name}")
+            return True
+        else:
+            print(f"⚠️  Unknown backbone: {model_name}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Failed to cache backbone for {model_name}: {e}")
+        return False
+
+def download_with_progress(url, output_path, max_retries=3, delay=5):
+    """Download file with progress bar and retry logic."""
+    for attempt in range(max_retries):
+        try:
+            print(f"\nAttempt {attempt + 1}/{max_retries}: Downloading from {url}")
+            
+            # Get file size first
+            response = requests.head(url, allow_redirects=True)
+            total_size = int(response.headers.get('content-length', 0))
+            
+            if total_size > 0:
+                print(f"File size: {total_size / (1024*1024*1024):.2f} GB")
+            
+            # Download with progress bar
+            response = requests.get(url, stream=True, allow_redirects=True)
+            response.raise_for_status()
+            
+            # Create progress bar
+            progress_bar = tqdm(
+                total=total_size,
+                unit='B',
+                unit_scale=True,
+                unit_divisor=1024,
+                desc=f"Downloading {output_path.name}"
+            )
+            
+            with open(output_path, 'wb') as file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        file.write(chunk)
+                        progress_bar.update(len(chunk))
+            
+            progress_bar.close()
+            print(f"✅ Download completed successfully!")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Download failed (attempt {attempt + 1}): {e}")
+            
+            # Remove partial file if it exists
+            if output_path.exists():
+                output_path.unlink()
+                print(f"Removed partial file: {output_path}")
+            
+            if attempt < max_retries - 1:
+                print(f"⏳ Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                print(f"💥 Failed to download after {max_retries} attempts")
+                return False
+    return False
 
 def download_models():
     # Get the directory of the current file
@@ -9,22 +110,103 @@ def download_models():
     
     # Load registry from leglength package
     registry_path = os.path.join(current_dir, 'leglength', 'registry.json')
-    with open(registry_path, 'r') as f:
-        registry = json.load(f)
+    
+    try:
+        with open(registry_path, 'r') as f:
+            registry = json.load(f)
+    except FileNotFoundError:
+        print(f"❌ Registry file not found: {registry_path}")
+        print("Please ensure registry.json exists with model URLs")
+        return
+    except json.JSONDecodeError as e:
+        print(f"❌ Invalid JSON in registry file: {e}")
+        return
     
     # Create models directory in project root
     models_dir = Path(os.path.join(current_dir, 'models'))
     models_dir.mkdir(exist_ok=True)
+    print(f"📁 Models directory: {models_dir}")
+    
+    # Set torch cache directory to be persistent
+    cache_dir = Path(os.path.join(current_dir, '.cache', 'torch'))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ['TORCH_HOME'] = str(cache_dir.parent)
+    print(f"🏗️  Torch cache directory: {cache_dir}")
+    
+    # Step 1: Pre-download backbone weights for models in registry
+    print(f"\n{'='*60}")
+    print(f"🏗️  STEP 1: PRE-DOWNLOADING BACKBONE WEIGHTS")
+    print(f"{'='*60}")
+    
+    backbone_success = 0
+    backbone_total = 0
+    
+    for model_name in registry.keys():
+        if 'example.com' not in registry[model_name]:  # Skip placeholder URLs
+            backbone_total += 1
+            if download_backbone_weights(model_name):
+                backbone_success += 1
+    
+    print(f"\n🏗️  Backbone weights cached: {backbone_success}/{backbone_total}")
+    
+    # Step 2: Download custom model checkpoints
+    print(f"\n{'='*60}")
+    print(f"📦 STEP 2: DOWNLOADING CUSTOM MODEL CHECKPOINTS")
+    print(f"{'='*60}")
+    
+    # Check for placeholder URLs
+    placeholder_urls = [url for url in registry.values() if 'example.com' in url]
+    if placeholder_urls:
+        print(f"⚠️  Found {len(placeholder_urls)} placeholder URLs in registry.json")
+        print("Please replace example.com URLs with actual model download links")
+        print("Skipping download of placeholder models...")
     
     # Download each model
-    for model_name, url in registry.items():
+    total_models = len(registry)
+    successful_downloads = 0
+    failed_downloads = 0
+    
+    print(f"\n🚀 Starting download of {total_models} custom models...")
+    
+    for i, (model_name, url) in enumerate(registry.items(), 1):
+        print(f"\n{'='*60}")
+        print(f"📦 Model {i}/{total_models}: {model_name}")
+        print(f"{'='*60}")
+        
         output_path = models_dir / f"{model_name}.pth"
-        if not output_path.exists():
-            print(f"Downloading {model_name} model...")
-            wget.download(url, str(output_path))
-            print(f"\nDownloaded {model_name} model to {output_path}")
+        
+        if output_path.exists():
+            file_size = output_path.stat().st_size / (1024*1024)
+            print(f"✅ Model already exists: {output_path} ({file_size:.1f} MB)")
+            successful_downloads += 1
+            continue
+        
+        # Skip placeholder URLs
+        if 'example.com' in url:
+            print(f"⏭️  Skipping placeholder URL: {url}")
+            continue
+        
+        success = download_with_progress(url, output_path)
+        if success:
+            file_size = output_path.stat().st_size / (1024*1024)
+            print(f"✅ Successfully downloaded: {output_path} ({file_size:.1f} MB)")
+            successful_downloads += 1
         else:
-            print(f"Model {model_name} already exists at {output_path}")
+            print(f"❌ Failed to download: {model_name}")
+            failed_downloads += 1
+    
+    # Summary
+    print(f"\n{'='*60}")
+    print(f"📊 DOWNLOAD SUMMARY")
+    print(f"{'='*60}")
+    print(f"🏗️  Backbone weights cached: {backbone_success}/{backbone_total}")
+    print(f"✅ Custom models downloaded: {successful_downloads}")
+    print(f"❌ Failed downloads: {failed_downloads}")
+    print(f"📁 Models directory: {models_dir}")
+    print(f"🏗️  Cache directory: {cache_dir}")
+    
+    if failed_downloads > 0:
+        print(f"\n⚠️  Some downloads failed. You can re-run this script to retry failed downloads.")
 
 if __name__ == "__main__":
     download_models() 
