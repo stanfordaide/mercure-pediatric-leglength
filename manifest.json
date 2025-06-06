@@ -10,17 +10,7 @@
     "url": "",
     "source": "",
     "environment": {
-      "FLYWHEEL": "/flywheel/v0",
-      "MYENV": "My Test Environment"
-    },
-    "custom": {
-      "gear-builder": {
-          "category": "analysis",
-          "image": "homer/hello-world:0.1.0"
-       },
-      "flywheel": {
-         "suite": "Flywheel Training Gears"
-      }
+      "FLYWHEEL": "/flywheel/v0"
     },
     "inputs": {
       "dicom_in": {
@@ -37,13 +27,6 @@
       "model": {
         "description": "The model to use for leg length detection (one of resnet101, densenet201, efficientnet_b0, mobilenet_v2, resnext101_32x8d)",
         "type": "string"
-      },
-      "num_rep": {
-        "description": "The number of times to say 'hello'",
-        "default": 5,
-        "minimum": 0,
-        "maximum": 10,
-        "type": "integer"
       }
     },
     "command": "python3 run.py"
