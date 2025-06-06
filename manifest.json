@@ -1,10 +1,10 @@
 {
-    "name": "hello-world",
-    "label": "Hello World: My First Gear",
-    "description": "My very first gear, developed along with the flywheel gear building tutorial.",
+    "name": "fw-leglength",
+    "label": "Pediatric Leg Length Algorithm",
+    "description": "Predicts 8 landmarks using different models.",
     "version": "0.1.0",
-    "author": "Flywheel User",
-    "maintainer": "Flywheel <support@flywheel.io>",
+    "author": "Arogya Koirala",
+    "maintainer": "Arogya Koirala <arogya@stanford.edu>",
     "cite": "",
     "license": "Apache-2.0",
     "url": "",
@@ -23,12 +23,12 @@
       }
     },
     "inputs": {
-      "message_file": {
-        "description": "the custom message we'll print after our Hello statements",
+      "dicom_in": {
+        "description": "DICOM file to process",
         "base": "file",
         "type": {
           "enum": [
-            "text"
+            "dicom"
           ]
         }
       }
