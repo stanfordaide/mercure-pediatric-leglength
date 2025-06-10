@@ -30,10 +30,10 @@ class LegMeasurements:
         
         # Define colors for visualization (BGR format)
         self.colors = {
-            'Femur (Right)': (255,31,223),    # White
-            'Femur (Left)': (255,31,223),    # White 
-            'Tibia (Right)': (255,31,223),    # White
-            'Tibia (Left)': (255,31,223),    # White
+            'femur_r': (255,31,223),    # White
+            'femur_l': (255,31,223),    # White 
+            'tibia_r': (255,31,223),    # White
+            'tibia_l': (255,31,223),    # White
         }
     
     def create_qa_dicom(self, predictions: Dict, dicom_path: str, output_path: str, processor: 'ImageProcessor' = None) -> None:
@@ -61,6 +61,25 @@ class LegMeasurements:
             x_center = int((box[0] + box[2]) / 2)
             y_center = int((box[1] + box[3]) / 2)
             keypoints[label] = (x_center, y_center)
+        
+        # Calculate derived points if they exist in config
+        if 'derived_points' in self.config:
+            for derived_point in self.config['derived_points']:
+                name = derived_point['name']
+                point_type = derived_point['type']
+                source_points = derived_point['source_points']
+                
+                if point_type == 'midpoint':
+                    # Check if all source points are available
+                    if all(point in keypoints for point in source_points):
+                        # Calculate midpoint
+                        x_coords = [keypoints[point][0] for point in source_points]
+                        y_coords = [keypoints[point][1] for point in source_points]
+                        midpoint_x = int(sum(x_coords) / len(x_coords))
+                        midpoint_y = int(sum(y_coords) / len(y_coords))
+                        keypoints[name] = (midpoint_x, midpoint_y)
+                    else:
+                        logger.warning(f"Missing source points for derived point {name}")
         
         # Draw measurements
         for measure in self.config['measurements']:
@@ -191,6 +210,25 @@ class LegMeasurements:
             x_center = (box[0] + box[2]) / 2
             y_center = (box[1] + box[3]) / 2
             keypoints[label] = (x_center, y_center)
+        
+        # Calculate derived points if they exist in config
+        if 'derived_points' in self.config:
+            for derived_point in self.config['derived_points']:
+                name = derived_point['name']
+                point_type = derived_point['type']
+                source_points = derived_point['source_points']
+                
+                if point_type == 'midpoint':
+                    # Check if all source points are available
+                    if all(point in keypoints for point in source_points):
+                        # Calculate midpoint
+                        x_coords = [keypoints[point][0] for point in source_points]
+                        y_coords = [keypoints[point][1] for point in source_points]
+                        midpoint_x = sum(x_coords) / len(x_coords)
+                        midpoint_y = sum(y_coords) / len(y_coords)
+                        keypoints[name] = (midpoint_x, midpoint_y)
+                    else:
+                        logger.warning(f"Missing source points for derived point {name}")
         
         # Calculate measurements based on config
         measurements = {}
