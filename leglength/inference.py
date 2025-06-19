@@ -7,14 +7,13 @@ from .processor import ImageProcessor
 from .outputs import LegMeasurements
 import torch
 
-logger = logging.getLogger(__name__)
-
 def run_inference(
     model_name: str,
     dicom_path: str,
     output_dir: str,
     confidence_threshold: float = 0.5,
-    best_per_class: bool = True
+    best_per_class: bool = True,
+    logger: logging.Logger = None
 ) -> None:
     """
     Run inference on a DICOM image and save keypoint predictions.

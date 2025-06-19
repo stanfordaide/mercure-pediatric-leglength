@@ -83,4 +83,4 @@ LABEL maintainer="Arogya Koirala" \
       org.opencontainers.image.description="Flywheel gear for leg length analysis"
 
 # Configure entrypoint with proper signal handling
-ENTRYPOINT ["python3", "/flywheel/v0/run.py"]
+ENTRYPOINT ["python3", "run.py"]

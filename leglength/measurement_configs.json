@@ -13,16 +13,16 @@
     ],
     "measurements": [
         {
-            "name": "femur_l",
-            "join_points": [2, "B"]
-        },
-        {
             "name": "femur_r",
             "join_points": [1, "A"]
         },
         {
             "name": "tibia_r",
             "join_points": ["A", 7]
+        },
+        {
+            "name": "femur_l",
+            "join_points": [2, "B"]
         },
         {
             "name": "tibia_l",
