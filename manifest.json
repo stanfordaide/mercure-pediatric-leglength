@@ -2,7 +2,7 @@
   "name": "aide-leglength",
   "label": "LPCH Pediatric Leg Length Algorithm",
   "description": "Predicts 8 landmarks using different models.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Arogya Koirala",
   "maintainer": "Arogya Koirala <arogya@stanford.edu>",
   "cite": "",
@@ -31,7 +31,7 @@
   "custom": {
     "gear-builder": {
       "category": "analysis",
-      "image": "stanfordaide/aide-leglength:0.1.0"
+      "image": "stanfordaide/aide-leglength:0.1.1"
     },
     "flywheel": {
       "suite": "Flywheel Training Gears"
