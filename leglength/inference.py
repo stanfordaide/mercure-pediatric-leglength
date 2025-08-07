@@ -5,6 +5,8 @@ import pandas as pd
 from .detector import LegLengthDetector
 from .processor import ImageProcessor
 from .outputs import LegMeasurements
+from .fusion import create_single_model_prediction
+from .unified_outputs import UnifiedOutputGenerator
 import torch
 
 def run_inference(
@@ -14,7 +16,7 @@ def run_inference(
     confidence_threshold: float = 0.5,
     best_per_class: bool = True,
     logger: logging.Logger = None
-) -> None:
+) -> dict:
     """
     Run inference on a DICOM image and save keypoint predictions.
     
@@ -24,6 +26,9 @@ def run_inference(
         output_dir: Directory to save predictions
         confidence_threshold: Confidence threshold for predictions
         best_per_class: If True, returns only the highest confidence prediction for each class
+        
+    Returns:
+        Dict containing measurements, predictions, and metadata
     """
     try:
         # Create output directory if it doesn't exist
@@ -70,9 +75,144 @@ def run_inference(
         qa_path = os.path.join(output_dir, f"{base_name}_qa.dcm")
         measurements.create_qa_dicom(predictions, dicom_path, qa_path, processor=processor)
         
+        # Return data for ensemble analysis
+        return {
+            'measurements': results,
+            'predictions': predictions,
+            'pixel_spacing': measurements.pixel_spacing,
+            'base_name': base_name
+        }
+        
     except FileNotFoundError as e:
         logger.error(f"File not found: {e}")
         raise
     except Exception as e:
         logger.error(f"Error during inference: {e}")
+        raise
+
+def run_unified_single_inference(
+    model_name: str,
+    dicom_path: str,
+    output_dir: str,
+    confidence_threshold: float = 0.5,
+    best_per_class: bool = True,
+    logger: logging.Logger = None
+) -> dict:
+    """
+    Run single model inference and generate unified outputs (same format as ensemble).
+    
+    Args:
+        model_name: Name of the model backbone to use
+        dicom_path: Path to the DICOM image
+        output_dir: Directory to save predictions
+        confidence_threshold: Confidence threshold for predictions
+        best_per_class: If True, returns only the highest confidence prediction for each class
+        logger: Logger instance
+        
+    Returns:
+        Dict containing unified results
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    logger.info(f"Starting single model inference with {model_name}")
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create temporary directory for single model processing
+    temp_dir = os.path.join(output_dir, 'temp_single')
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    try:
+        # Run standard inference
+        inference_results = run_inference(
+            model_name=model_name,
+            dicom_path=dicom_path,
+            output_dir=temp_dir,
+            confidence_threshold=confidence_threshold,
+            best_per_class=best_per_class,
+            logger=logger
+        )
+        
+        # Convert to unified format
+        logger.info("Converting to unified prediction format...")
+        unified_predictions = create_single_model_prediction(inference_results)
+        
+        # Calculate measurements using unified predictions
+        logger.info("Calculating measurements from unified predictions...")
+        measurements = LegMeasurements()
+        measurements_data = measurements.calculate_distances(unified_predictions, dicom_path)
+        
+        # Generate unified outputs
+        logger.info("Generating unified outputs...")
+        output_generator = UnifiedOutputGenerator()
+        
+        # Get base name for output files
+        base_name = os.path.splitext(os.path.basename(dicom_path))[0]
+        
+        # Single model information
+        single_model_info = {
+            'model': model_name,
+            'inference_type': 'single_model'
+        }
+        
+        # Generate the three output files
+        qa_path = os.path.join(output_dir, f"{base_name}_qa_visualization.dcm")
+        output_generator.create_enhanced_qa_visualization(
+            unified_predictions=unified_predictions,
+            dicom_path=dicom_path,
+            output_path=qa_path,
+            processor=None,
+            ensemble_info=None  # No ensemble info for single model
+        )
+        
+        sr_path = os.path.join(output_dir, f"{base_name}_measurements_report.dcm")
+        output_generator.create_enhanced_secondary_capture(
+            unified_predictions=unified_predictions,
+            measurements_data=measurements_data,
+            dicom_path=dicom_path,
+            output_path=sr_path,
+            ensemble_info=None
+        )
+        
+        json_path = os.path.join(output_dir, f"{base_name}_measurements_report.json")
+        output_generator.create_enhanced_json_report(
+            unified_predictions=unified_predictions,
+            measurements_data=measurements_data,
+            dicom_path=dicom_path,
+            output_path=json_path,
+            ensemble_info=None,
+            disagreement_metrics=None  # No disagreement metrics for single model
+        )
+        
+        # Clean up temporary directory
+        import shutil
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        
+        logger.info("Single model inference completed successfully")
+        logger.info(f"Generated unified outputs:")
+        logger.info(f"  - QA Visualization: {qa_path}")
+        logger.info(f"  - Secondary Capture: {sr_path}")
+        logger.info(f"  - JSON Report: {json_path}")
+        
+        return {
+            'unified_predictions': unified_predictions,
+            'measurements_data': measurements_data,
+            'single_model_info': single_model_info,
+            'output_files': {
+                'qa_visualization': qa_path,
+                'secondary_capture': sr_path,
+                'json_report': json_path
+            },
+            'model_processed': model_name,
+            'output_dir': output_dir
+        }
+        
+    except Exception as e:
+        # Clean up temporary directory on error
+        import shutil
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
         raise 
