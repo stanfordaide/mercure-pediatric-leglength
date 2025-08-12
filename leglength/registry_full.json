@@ -1,7 +1,0 @@
-{
-    "densenet201": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.1.0/densenet201.pth",
-    "resnet101": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.1.0/resnet101.pth",
-    "resnext101_32x8d": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.1.0/resnext101_32x8d.pth",
-    "efficientnet_b0": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.1.0/efficientnet_b0.pth",
-    "mobilenet_v2": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.1.0/mobilenet_v2.pth"
-  } 

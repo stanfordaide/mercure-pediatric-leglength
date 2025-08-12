@@ -1,0 +1,19 @@
+{
+    "process": {
+        "settings": {
+            "mode": "ensemble",
+            "model": "resnet101",
+            "ensemble_models": [
+                "resnet101",
+                "resnext101_32x8d",
+                "vit_l_16"
+            ],
+            "conf_threshold": 0.1,
+            "enable_disagreement": true,
+            "detection_weight": 0.5,
+            "outlier_weight": 0.35,
+            "localization_weight": 0.15,
+            "series_offset": 1000
+        }
+    }
+}

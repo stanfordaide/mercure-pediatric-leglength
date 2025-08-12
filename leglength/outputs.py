@@ -207,8 +207,8 @@ class LegMeasurements:
         keypoints = {}
         for i, (box, label) in enumerate(zip(predictions['boxes'], predictions['labels'])):
             # Calculate center point of bounding box
-            x_center = (box[0] + box[2]) / 2
-            y_center = (box[1] + box[3]) / 2
+            x_center = float((box[0] + box[2]) / 2)
+            y_center = float((box[1] + box[3]) / 2)
             keypoints[label] = (x_center, y_center)
         
         # Calculate derived points if they exist in config

@@ -14,29 +14,20 @@ def download_backbone_weights(model_name):
         
         # Map model names to torchvision functions
         backbone_map = {
-            # Direct torchvision detection models
-            "resnet50": lambda: torchvision.models.detection.fasterrcnn_resnet50_fpn(weights='DEFAULT'),
-            "mobilenet_v3_large": lambda: torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights='DEFAULT'),
-            "mobilenet_v3_large_320": lambda: torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(weights='DEFAULT'),
-            "resnet50_fpn_v2": lambda: torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(weights='DEFAULT'),
-            
-            # Custom backbone models
-            "resnet18": lambda: torchvision.models.resnet18(weights='DEFAULT'),
-            "resnet34": lambda: torchvision.models.resnet34(weights='DEFAULT'),
+            # Models from registry_full.json
             "resnet101": lambda: torchvision.models.resnet101(weights='DEFAULT'),
-            "resnet152": lambda: torchvision.models.resnet152(weights='DEFAULT'),
-            "mobilenet_v2": lambda: torchvision.models.mobilenet_v2(weights='DEFAULT'),
-            "efficientnet_b0": lambda: torchvision.models.efficientnet_b0(weights='DEFAULT'),
-            "convnext_tiny": lambda: torchvision.models.convnext_tiny(weights='DEFAULT'),
-            "convnext_small": lambda: torchvision.models.convnext_small(weights='DEFAULT'),
-            "convnext_base": lambda: torchvision.models.convnext_base(weights='DEFAULT'),
-            "convnext_large": lambda: torchvision.models.convnext_large(weights='DEFAULT'),
-            "resnext50_32x4d": lambda: torchvision.models.resnext50_32x4d(weights='DEFAULT'),
             "resnext101_32x8d": lambda: torchvision.models.resnext101_32x8d(weights='DEFAULT'),
-            "resnext101_64x4d": lambda: torchvision.models.resnext101_64x4d(weights='DEFAULT'),
-            "densenet121": lambda: torchvision.models.densenet121(weights='DEFAULT'),
-            "densenet169": lambda: torchvision.models.densenet169(weights='DEFAULT'),
             "densenet201": lambda: torchvision.models.densenet201(weights='DEFAULT'),
+            "vit_l_16": lambda: torchvision.models.vit_l_16(weights='DEFAULT'),
+            "efficientnet_v2_m": lambda: torchvision.models.efficientnet_v2_m(weights='DEFAULT'),
+            "mobilenet_v3_large": lambda: torchvision.models.mobilenet_v3_large(weights='DEFAULT'),
+            "swin_v2_b": lambda: torchvision.models.swin_v2_b(weights='DEFAULT'),
+            "convnext_base": lambda: torchvision.models.convnext_base(weights='DEFAULT'),
+            
+            # Keep some useful extras for development
+            "resnet50": lambda: torchvision.models.detection.fasterrcnn_resnet50_fpn(weights='DEFAULT'),
+            "mobilenet_v3_large_320": lambda: torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(weights='DEFAULT'),
+            "resnet50_fpn_v2": lambda: torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(weights='DEFAULT')
         }
         
         if model_name in backbone_map:
@@ -108,15 +99,15 @@ def download_models():
     # Get the directory of the current file
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Load registry from leglength package
-    registry_path = os.path.join(current_dir, 'leglength', 'registry.json')
+    # Load registry from project root (same directory as download_models.py)
+    registry_path = os.path.join(current_dir, 'registry.json')
     
     try:
         with open(registry_path, 'r') as f:
             registry = json.load(f)
     except FileNotFoundError:
         print(f"❌ Registry file not found: {registry_path}")
-        print("Please ensure registry.json exists with model URLs")
+        print("Please ensure registry.json exists in the project root with model URLs")
         return
     except json.JSONDecodeError as e:
         print(f"❌ Invalid JSON in registry file: {e}")

@@ -1,0 +1,5 @@
+{
+  "resnet101": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.2.0/resnet101.pth",
+  "vit_l_16": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.2.0/vit_l_16.pth",
+  "resnext101_32x8d": "https://stanford-aide-public.s3.us-west-2.amazonaws.com/pediatric_leglength/v0.2.0/resnext101_32x8d.pth"
+} 
