@@ -337,7 +337,8 @@ def run_ensemble_inference(
         'models': models,
         'num_models': len(models),
         'models_processed': list(model_inference_results.keys()),
-        'fusion_method': 'confidence_weighted_centroid'
+        'fusion_method': 'confidence_weighted_centroid',
+        'disagreement_metrics': disagreement_metrics if 'disagreement_metrics' in locals() else {}
     }
     
     # Generate the three output files

@@ -55,19 +55,25 @@ RUN pip3 install --upgrade pip setuptools wheel && \
 # Create models and cache directories
 RUN mkdir -p ${HOME_DIR}/models ${HOME_DIR}/.cache
 
-# Copy the application files
-COPY leglength ${HOME_DIR}/leglength
+# Copy only the files needed for downloading models first
+# This layer will be cached unless download_models.py or registry.json change
+COPY registry.json ${HOME_DIR}/registry.json
 COPY download_models.py ${HOME_DIR}/download_models.py
-COPY run.py ${HOME_DIR}/run.py
-COPY docker_entrypoint.sh ${HOME_DIR}/docker_entrypoint.sh
 
 # Download all model checkpoints
 # Note: Comment out if you want to download models at runtime instead
 RUN python3 download_models.py
 
+# Copy the remaining application files
+# This layer will be invalidated when application code changes, but models won't be re-downloaded
+COPY leglength ${HOME_DIR}/leglength
+COPY run.py ${HOME_DIR}/run.py
+COPY docker_entrypoint.sh ${HOME_DIR}/docker_entrypoint.sh
+
 # Set proper ownership and permissions
 RUN chown -R mercureapp:mercureapp ${HOME_DIR} && \
-    chmod a+x ${HOME_DIR}/run.py
+    chmod a+x ${HOME_DIR}/run.py && \
+    chmod a+x ${HOME_DIR}/docker_entrypoint.sh
 
 # Add health check to verify container readiness
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -84,4 +90,4 @@ LABEL maintainer="Arogya Koirala" \
       org.opencontainers.image.description="Mercure processing module for leg length analysis"
 
 # Configure entrypoint with proper signal handling
-ENTRYPOINT ["python3", "run.py"]
+ENTRYPOINT ["./docker_entrypoint.sh"]

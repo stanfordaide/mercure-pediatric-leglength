@@ -214,7 +214,8 @@ class LegLengthDetector:
     def _get_registry() -> dict:
         """Get the model registry from registry.json."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        registry_path = os.path.join(current_dir, 'registry.json')
+        # Look for registry.json in the project root (parent directory of leglength module)
+        registry_path = os.path.join(os.path.dirname(current_dir), 'registry.json')
         with open(registry_path, 'r') as f:
             return json.load(f)
     
@@ -223,8 +224,8 @@ class LegLengthDetector:
         """Get the path to the model checkpoint for a given backbone."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
         
-        # Load registry
-        registry_path = os.path.join(current_dir, 'registry.json')
+        # Load registry from project root
+        registry_path = os.path.join(os.path.dirname(current_dir), 'registry.json')
         with open(registry_path, 'r') as f:
             registry = json.load(f)
         

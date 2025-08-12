@@ -1,46 +1,18 @@
-# Example task.json with all available options
 {
     "process": {
         "settings": {
-            # Inference mode: "single" (one model) or "ensemble" (multiple models)
-            "mode": "single",
-            
-            # Model for single mode - choose one of:
-            # "resnet101", "efficientnet_v2_m", "mobilenet_v3_large"
+            "mode": "ensemble",
             "model": "resnet101",
-            
-            # Models for ensemble mode - list 2-5 models from above options
             "ensemble_models": [
                 "resnet101",
-                "efficientnet_v2_m",
-                "mobilenet_v3_large"
+                "resnext101_32x8d",
+                "vit_l_16"
             ],
-            
-            # Minimum confidence threshold for detections (0.0 to 1.0)
-            # Lower values = more detections, higher values = only high-confidence detections
             "conf_threshold": 0.1,
-            
-            # Enable disagreement analysis for ensemble mode (true/false)
-            # Provides uncertainty metrics when multiple models disagree
-            "enable_disagreement": false,
-            
-            # Disagreement weights (only used if enable_disagreement is true)
-            # These should sum to 1.0 for proper interpretation:
-            
-            # Weight for detection disagreement (0.0 to 1.0)
-            # How much to penalize when models disagree on point detection
+            "enable_disagreement": true,
             "detection_weight": 0.5,
-            
-            # Weight for outlier risk (0.0 to 1.0) 
-            # How much to penalize large distances between model predictions
             "outlier_weight": 0.35,
-            
-            # Weight for localization disagreement (0.0 to 1.0)
-            # How much to penalize spatial disagreement between models
             "localization_weight": 0.15,
-            
-            # Offset added to DICOM series number (integer)
-            # Prevents collision with original series in PACS systems
             "series_offset": 1000
         }
     }

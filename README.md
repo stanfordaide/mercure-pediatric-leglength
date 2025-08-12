@@ -1,6 +1,6 @@
-# Leg Length Analysis Module
+# Pediatric Leg Length Analysis Module
 
-A Docker-based application for automated leg length measurements from DICOM images using deep learning models.
+A Docker-based application for automated pediatric leg length measurements from DICOM images using deep learning models.
 
 ## Features
 
@@ -19,7 +19,7 @@ A Docker-based application for automated leg length measurements from DICOM imag
 
 1. **Build the Docker image:**
 ```bash
-docker build -t leglength-test .
+docker build -t stanfordaide/pediatric-leglength .
 ```
 
 2. **Prepare your data:**
@@ -48,14 +48,15 @@ Files from the same series should share the same `SeriesID`. The `#` and descrip
 
 4. **Configure Analysis:**
 
-Create a `tasks.json` file to configure the analysis:
+Create a `task.json` file to configure the analysis. Here's the complete specification:
+
 ```json
 {
-    "mode": "single",
+    "mode": "ensemble",
     "model": "resnext101_32x8d",
-    "ensemble_models": ["resnet101", "efficientnet_v2_m", "mobilenet_v3_large"],
+    "ensemble_models": ["resnet101", "resnext101_32x8d", "vit_l_16"],
     "conf_threshold": 0.1,
-    "enable_disagreement": false,
+    "enable_disagreement": true,
     "detection_weight": 0.5,
     "outlier_weight": 0.35,
     "localization_weight": 0.15,
@@ -68,35 +69,111 @@ Create a `tasks.json` file to configure the analysis:
 Using environment variables:
 ```bash
 docker run -v $(pwd)/input:/input -v $(pwd)/output:/output \
-    -v $(pwd)/tasks.json:/app/v0/tasks.json \
+    -v $(pwd)/task.json.example:/input/task.json \
     -e MERCURE_IN_DIR=/input \
     -e MERCURE_OUT_DIR=/output \
-    leglength-test
+    stanfordaide/pediatric-leglength
 ```
 
 Or using command line arguments:
 ```bash
 docker run -v $(pwd)/input:/input -v $(pwd)/output:/output \
-    -v $(pwd)/tasks.json:/app/v0/tasks.json \
-    leglength-test \
+    -v $(pwd)/task.json.example:/input/task.json \
+    stanfordaide/pediatric-leglength \
     /input /output
 ```
 
 ## Configuration Options
 
-All configuration is done through `tasks.json`:
+### **Analysis Mode**
+- **`mode`** (string, required): Analysis mode selection
+  - `"single"`: Use a single model for inference
+  - `"ensemble"`: Use multiple models with consensus fusion
 
-| Option | Default | Description |
-|----------|---------|-------------|
-| `mode` | `single` | Inference mode: `single` or `ensemble` |
-| `model` | `resnext101_32x8d` | Model for single mode |
-| `ensemble_models` | `[...]` | Models for ensemble mode |
-| `conf_threshold` | `0.1` | Minimum confidence threshold |
-| `enable_disagreement` | `false` | Enable disagreement analysis |
-| `detection_weight` | `0.5` | Weight for detection disagreement |
-| `outlier_weight` | `0.35` | Weight for outlier risk |
-| `localization_weight` | `0.15` | Weight for localization disagreement |
-| `series_offset` | `1000` | Offset for DICOM series number |
+### **Model Selection**
+- **`model`** (string, required for single mode): Primary model for single-mode inference
+  - Available models: `"resnet101"`, `"resnext101_32x8d"`, `"vit_l_16"`, `"densenet201"`, `"efficientnet_v2_m"`, `"mobilenet_v3_large"`, `"swin_v2_b"`, `"convnext_base"`
+
+- **`ensemble_models`** (array, required for ensemble mode): List of models to use in ensemble
+  - Must contain 2 or more model names from the available list above
+  - Example: `["resnet101", "resnext101_32x8d", "vit_l_16"]`
+
+### **Detection Parameters**
+- **`conf_threshold`** (float, optional): Confidence threshold for landmark detection
+  - Range: 0.0 to 1.0
+  - Default: 0.1
+  - Lower values detect more landmarks but may include false positives
+  - Higher values are more selective but may miss valid landmarks
+
+### **Ensemble Analysis**
+- **`enable_disagreement`** (boolean, optional): Enable disagreement metrics calculation
+  - Default: true
+  - Only applies to ensemble mode
+  - Calculates uncertainty quantification between models
+
+### **Disagreement Weights** (ensemble mode only)
+- **`detection_weight`** (float, optional): Weight for detection disagreement in overall uncertainty score
+  - Range: 0.0 to 1.0
+  - Default: 0.5
+  - Higher values emphasize whether all models detect the same landmarks
+
+- **`outlier_weight`** (float, optional): Weight for outlier risk in overall uncertainty score
+  - Range: 0.0 to 1.0
+  - Default: 0.35
+  - Higher values emphasize spatial consistency between models
+
+- **`localization_weight`** (float, optional): Weight for localization disagreement in overall uncertainty score
+  - Range: 0.0 to 1.0
+  - Default: 0.15
+  - Higher values emphasize precise landmark positioning
+
+**Note**: The three weights should sum to 1.0 for proper interpretation. If they don't sum to 1.0, the system will automatically normalize them.
+
+### **Output Configuration**
+- **`series_offset`** (integer, optional): Offset for DICOM series numbering
+  - Default: 1000
+  - Used to avoid conflicts with original series numbers
+  - Output series will be numbered as: original_series + series_offset
+
+## Example Configurations
+
+### **Single Model Analysis**
+```json
+{
+    "mode": "single",
+    "model": "resnext101_32x8d",
+    "conf_threshold": 0.2,
+    "series_offset": 1000
+}
+```
+
+### **Ensemble Analysis with High Confidence**
+```json
+{
+    "mode": "ensemble",
+    "ensemble_models": ["resnet101", "resnext101_32x8d", "vit_l_16"],
+    "conf_threshold": 0.3,
+    "enable_disagreement": true,
+    "detection_weight": 0.6,
+    "outlier_weight": 0.3,
+    "localization_weight": 0.1,
+    "series_offset": 1000
+}
+```
+
+### **Ensemble Analysis with Balanced Weights**
+```json
+{
+    "mode": "ensemble",
+    "ensemble_models": ["resnet101", "efficientnet_v2_m", "mobilenet_v3_large"],
+    "conf_threshold": 0.1,
+    "enable_disagreement": true,
+    "detection_weight": 0.4,
+    "outlier_weight": 0.4,
+    "localization_weight": 0.2,
+    "series_offset": 1000
+}
+```
 
 ## Available Models
 

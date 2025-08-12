@@ -173,7 +173,7 @@ def process_image(dicom_path: Path, output_dir: Path, config: dict, log: logging
                 else:
                     log.info("✅ Low disagreement - high confidence results")
 
-def ready_outputs(tmp_dir: Path, output_dir: Path, series_uid: str, config: dict, log: logging.Logger) -> None:
+def ready_outputs(tmp_dir: Path, output_dir: Path, qa_series_uid: str, sr_series_uid: str, config: dict, log: logging.Logger) -> None:
     """Move and update output files from temporary directory to final output directory."""
     log.info("Moving output files to final destination...")
     
@@ -189,25 +189,66 @@ def ready_outputs(tmp_dir: Path, output_dir: Path, series_uid: str, config: dict
             if file.endswith('.dcm'):
                 # Update DICOM headers
                 ds = pydicom.dcmread(src)
-                ds.SeriesInstanceUID = series_uid
+                if 'qa_visualization' in file:
+                    ds.SeriesInstanceUID = qa_series_uid
+                elif 'measurements_report' in file:
+                    ds.SeriesInstanceUID = sr_series_uid
+                else:
+                    ds.SeriesInstanceUID = qa_series_uid  # Default to QA series
                 ds.SOPInstanceUID = generate_uid()
                 
-                # Safely handle SeriesNumber
+                # Safely handle SeriesNumber with sequential offset for multiple output series
                 try:
                     current_series = int(getattr(ds, "SeriesNumber", 0) or 0)
-                    ds.SeriesNumber = current_series + config["series_offset"]
+                    if 'qa_visualization' in file:
+                        # First output series: original + series_offset
+                        ds.SeriesNumber = current_series + config["series_offset"]
+                    elif 'measurements_report' in file:
+                        # Second output series: original + (2 * series_offset)
+                        ds.SeriesNumber = current_series + (2 * config["series_offset"])
+                    else:
+                        # Other files: original + series_offset
+                        ds.SeriesNumber = current_series + config["series_offset"]
                 except (ValueError, TypeError):
-                    ds.SeriesNumber = config["series_offset"]
+                    if 'qa_visualization' in file:
+                        ds.SeriesNumber = config["series_offset"]
+                    elif 'measurements_report' in file:
+                        ds.SeriesNumber = 2 * config["series_offset"]
+                    else:
+                        ds.SeriesNumber = config["series_offset"]
                 
                 # Update descriptions based on file type
                 if 'qa_visualization' in file:
-                    ds.SeriesDescription = f"QA({getattr(ds, 'SeriesDescription', '')})"
+                    # Preserve original series description, just add SC prefix
+                    original_series_desc = getattr(ds, 'SeriesDescription', '')
+                    ds.SeriesDescription = f"SC({original_series_desc})" if original_series_desc else "SC"
+                    
+                    # Preserve original study description, just add AIDEOUT(LL()) prefix
+                    original_study_desc = getattr(ds, 'StudyDescription', '')
+                    if original_study_desc:
+                        ds.StudyDescription = f"AIDEOUT(SC({original_study_desc}))"
+                    else:
+                        ds.StudyDescription = "AIDEOUT(SC)"
+                        
                 elif 'measurements_report' in file:
-                    ds.SeriesDescription = f"Measurements({getattr(ds, 'SeriesDescription', '')})"
-                
-                # Always append AIDE_OUTPUT to study description
-                current_study_desc = getattr(ds, 'StudyDescription', '')
-                ds.StudyDescription = f"{current_study_desc} AIDE_OUTPUT".strip()
+                    # Preserve original series description, just add SR prefix
+                    original_series_desc = getattr(ds, 'SeriesDescription', '')
+                    ds.SeriesDescription = f"SR({original_series_desc})" if original_series_desc else "SR"
+                    
+                    # Preserve original study description, just add AIDEOUT(SR()) prefix
+                    original_study_desc = getattr(ds, 'StudyDescription', '')
+                    if original_study_desc:
+                        ds.StudyDescription = f"AIDEOUT(SR({original_study_desc}))"
+                    else:
+                        ds.StudyDescription = "AIDEOUT(SR)"
+                        
+                else:
+                    # For any other DICOM files, preserve original descriptions
+                    original_study_desc = getattr(ds, 'StudyDescription', '')
+                    if original_study_desc:
+                        ds.StudyDescription = f"AIDEOUT({original_study_desc})"
+                    else:
+                        ds.StudyDescription = "AIDEOUT"
                 
                 ds.save_as(dst)
             else:
@@ -282,9 +323,10 @@ def main():
                 log.info(f"Processing series {series_id}: {dicom_path.name}")
                 process_image(dicom_path, tmp_dir, config, log)
         
-        # Move outputs to final destination
-        series_uid = generate_uid()
-        ready_outputs(tmp_dir, args.output_dir, series_uid, config, log)
+        # Move outputs to final destination with separate series UIDs for each output type
+        qa_series_uid = generate_uid()
+        sr_series_uid = generate_uid()
+        ready_outputs(tmp_dir, args.output_dir, qa_series_uid, sr_series_uid, config, log)
         
         # Log completion
         log.info("=" * 60)

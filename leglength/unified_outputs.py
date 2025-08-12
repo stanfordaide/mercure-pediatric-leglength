@@ -114,10 +114,10 @@ class UnifiedOutputGenerator:
                 color = self.get_uncertainty_color(avg_uncertainty)
                 
                 # Draw line between points with thickness based on uncertainty
-                thickness = 2 if avg_uncertainty <= 10 else 3
+                thickness = 4 if avg_uncertainty <= 10 else 6  # Increased base thickness
                 cv2.line(visualization, p1, p2, color, thickness)
                 
-                # Draw points with enhanced markers (circle outline with center dot)
+                # Draw points with enhanced markers (larger circles for better visibility)
                 self._draw_enhanced_uncertainty_point(visualization, p1, uncertainty1)
                 self._draw_enhanced_uncertainty_point(visualization, p2, uncertainty2)
                 
@@ -138,47 +138,41 @@ class UnifiedOutputGenerator:
                 if avg_uncertainty > 10:
                     label += f" ±{avg_uncertainty:.1f}"
                 
-                # Calculate text position with proper offset
-                text_offset_y = -50
+                # Calculate text position with improved alignment
+                text_offset_y = -60  # Increased offset for better positioning
                 
                 # Calculate text width to properly offset
                 (text_width, text_height), _ = cv2.getTextSize(
-                    label, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)
+                    label, cv2.FONT_HERSHEY_SIMPLEX, 2.4, 3)  # Doubled font size
                 
-                # Offset text to left for _r measurements, right for _l measurements
+                # Improved text positioning for better alignment with measurement lines
                 if name.endswith('_r'):
-                    text_offset_x = -text_width - 10  # Offset to the left
+                    text_offset_x = -text_width - 15  # Increased left offset for right measurements
                 elif name.endswith('_l'):
-                    text_offset_x = 10   # Offset to the right
+                    text_offset_x = 15   # Increased right offset for left measurements
                 else:
                     text_offset_x = -text_width // 2  # Center for other measurements
                 
                 text_pos = (mid_point[0] + text_offset_x, mid_point[1] + text_offset_y)
                 
-                # Add text with shadow/outline for better contrast
+                # Add text with enhanced shadow/outline for better contrast and readability
                 self._draw_text_with_outline(visualization, label, text_pos, 
-                                           cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
+                                           cv2.FONT_HERSHEY_SIMPLEX, 2.4, color, 3)  # Doubled font size
         
-        # Add ensemble information and disagreement metrics
-        if ensemble_info:
-            # Main ensemble info
-            info_text = f"Ensemble: {len(ensemble_info.get('models', []))} models"
-            self._draw_text_with_outline(visualization, info_text, (10, 30),
-                                       cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
-            
-        # Add disagreement metrics at bottom with larger font
+        # Add disagreement metrics at top with improved spacing
         disagreement_data = unified_predictions.get('disagreement_metrics', {})
         if ensemble_info and 'disagreement_metrics' in ensemble_info:
             disagreement_data = ensemble_info['disagreement_metrics']
         
         if disagreement_data:
-            # Position metrics at bottom of image
-            metrics_y_start = visualization.shape[0] - 150
+            # Position metrics at top of image with better spacing and padding
+            metrics_y_start = 80  # Increased padding from top edge
             metrics_x = 10
-            font_scale = 1.0  # Larger font size
+            font_scale = 2.0  # Doubled font size for better readability
+            line_spacing = 50  # Consistent spacing between lines
             
             # Detection disagreement
-            detection_score = disagreement_data.get('detection_disagreement', 0.0)
+            detection_score = disagreement_data.get('detection_disagreement_score', 0.0)
             if not np.isnan(detection_score):
                 detection_text = f"Detection Disagreement: {detection_score:.3f}"
                 self._draw_text_with_outline(visualization, detection_text, 
@@ -186,19 +180,19 @@ class UnifiedOutputGenerator:
                                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 3)
             
             # Localization disagreement
-            localization_score = disagreement_data.get('localization_disagreement', 0.0)
+            localization_score = disagreement_data.get('localization_disagreement_score', 0.0)
             if not np.isnan(localization_score):
                 localization_text = f"Localization Disagreement: {localization_score:.3f}"
                 self._draw_text_with_outline(visualization, localization_text, 
-                                           (metrics_x, metrics_y_start + 35),
+                                           (metrics_x, metrics_y_start + line_spacing),
                                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 3)
             
             # Outlier risk
-            outlier_score = disagreement_data.get('outlier_risk', 0.0)
+            outlier_score = disagreement_data.get('outlier_risk_score', 0.0)
             if not np.isnan(outlier_score):
                 outlier_text = f"Outlier Risk: {outlier_score:.3f}"
                 self._draw_text_with_outline(visualization, outlier_text, 
-                                           (metrics_x, metrics_y_start + 70),
+                                           (metrics_x, metrics_y_start + 2 * line_spacing),
                                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 3)
             
             # Composite risk score (most important - make it stand out)
@@ -206,8 +200,8 @@ class UnifiedOutputGenerator:
             if not np.isnan(composite_score):
                 composite_text = f"Overall Score: {composite_score:.3f}"
                 self._draw_text_with_outline(visualization, composite_text, 
-                                           (metrics_x, metrics_y_start + 105),
-                                           cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 0), 3)  # Yellow for emphasis
+                                           (metrics_x, metrics_y_start + 3 * line_spacing),
+                                           cv2.FONT_HERSHEY_SIMPLEX, 2.4, (255, 255, 0), 3)  # Doubled and yellow for emphasis
         
         # Save as DICOM
         self._save_as_dicom(visualization, dcm, output_path, "Enhanced QA Visualization")
@@ -228,25 +222,25 @@ class UnifiedOutputGenerator:
         
         # Point label
         cv2.putText(image, str(point_id), (x + 8, y - 8), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 2)  # Doubled font size
     
     def _draw_enhanced_uncertainty_point(self, image, point, uncertainty):
-        """Draw an enhanced point with circle outline and center dot."""
+        """Draw an enhanced point with larger, more visible markers."""
         x, y = point
         
         # Get color based on uncertainty
         color = self.get_uncertainty_color(uncertainty)
         
-        # Draw circle outline
-        cv2.circle(image, (x, y), 8, color, 2)
+        # Draw larger circle outline for better visibility
+        cv2.circle(image, (x, y), 12, color, 3)  # Increased from 8 to 12, thickness from 2 to 3
         
-        # Draw center dot
-        cv2.circle(image, (x, y), 2, color, -1)
+        # Draw larger center dot
+        cv2.circle(image, (x, y), 4, color, -1)  # Increased from 2 to 4
         
         # Uncertainty circle (larger for higher uncertainty)
         if uncertainty > 0:
-            uncertainty_radius = int(12 + uncertainty)
-            cv2.circle(image, (x, y), uncertainty_radius, color, 1)
+            uncertainty_radius = int(18 + uncertainty)  # Increased from 12 to 18
+            cv2.circle(image, (x, y), uncertainty_radius, color, 2)  # Increased thickness from 1 to 2
     
     def _draw_text_with_outline(self, image, text, position, font, font_scale, color, thickness):
         """Draw text with black outline for better contrast."""
@@ -280,46 +274,32 @@ class UnifiedOutputGenerator:
             output_path: Path to save the structured report
             ensemble_info: Information about ensemble models used
         """
-        # Read source DICOM for patient information
+        # Read source DICOM and copy it
         source_dcm = pydicom.dcmread(dicom_path)
+        ds = source_dcm.copy()
         
-        # Create DICOM dataset for Structured Report
-        file_meta = Dataset()
-        file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.88.11'  # SR Document
-        file_meta.MediaStorageSOPInstanceUID = generate_uid()
-        file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
-        
-        # Create the dataset
-        ds = FileDataset(output_path, {}, file_meta=file_meta, preamble=b"\0" * 128)
-        
-        # Copy patient and study information
-        attrs_to_copy = [
-            'PatientName', 'PatientID', 'PatientBirthDate', 'PatientSex',
-            'StudyInstanceUID', 'StudyID', 'StudyDate', 'ReferringPhysicianName',
-            'AccessionNumber'
-        ]
-        
-        for attr in attrs_to_copy:
-            if hasattr(source_dcm, attr):
-                setattr(ds, attr, getattr(source_dcm, attr))
-        
-        # Set required SR attributes
-        dt = datetime.now()
-        ds.SpecificCharacterSet = 'ISO_IR 100'
-        ds.InstanceCreationDate = dt.strftime('%Y%m%d')
-        ds.InstanceCreationTime = dt.strftime('%H%M%S')
+        # Update only the fields that need to change for SR
         ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.88.11'  # SR Document
         ds.SOPInstanceUID = generate_uid()
         ds.SeriesInstanceUID = generate_uid()
-        ds.SeriesDescription = 'Enhanced Leg Length Analysis Report'
-        ds.InstanceNumber = 1
-        ds.StudyDate = dt.strftime('%Y%m%d')
-        ds.ContentDate = dt.strftime('%Y%m%d')
-        ds.ContentTime = dt.strftime('%H%M%S')
         ds.Modality = 'SR'
         ds.Manufacturer = 'STANFORD AIDE'
         ds.CompletionFlag = 'COMPLETE'
         ds.VerificationFlag = 'UNVERIFIED'
+        
+        # Add required SR fields for Orthanc compatibility
+        ds.SpecificCharacterSet = 'ISO_IR 100'
+        ds.ContentTemplateSequence = [Dataset()]
+        ds.ContentTemplateSequence[0].MappingResource = 'DCMR'
+        ds.ContentTemplateSequence[0].TemplateIdentifier = 'TID 1500'  # Basic Diagnostic Imaging Report
+        ds.DocumentTitle = 'Leg Length Analysis Report'
+        
+        # Update timestamps
+        dt = datetime.now()
+        ds.InstanceCreationDate = dt.strftime('%Y%m%d')
+        ds.InstanceCreationTime = dt.strftime('%H%M%S')
+        ds.ContentDate = dt.strftime('%Y%m%d')
+        ds.ContentTime = dt.strftime('%H%M%S')
         
         # Create main container for measurements
         main_container = Dataset()
@@ -331,19 +311,18 @@ class UnifiedOutputGenerator:
         main_container.ConceptNameCodeSequence[0].CodingSchemeDesignator = '99LEG'
         main_container.ConceptNameCodeSequence[0].CodeMeaning = 'Enhanced Leg Length Analysis'
         
+        # Add document title for better Orthanc display
+        title_item = Dataset()
+        title_item.RelationshipType = 'CONTAINS'
+        title_item.ValueType = 'TEXT'
+        title_item.ConceptNameCodeSequence = [Dataset()]
+        title_item.ConceptNameCodeSequence[0].CodeValue = '121139'
+        title_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = 'DCM'
+        title_item.ConceptNameCodeSequence[0].CodeMeaning = 'Document Title'
+        title_item.TextValue = 'Leg Length Analysis Report'
+        content_items = [title_item]
+        
         # Create content sequence for all data
-        content_items = []
-        
-        # 1. Add measurements container
-        measurements_container = Dataset()
-        measurements_container.RelationshipType = 'CONTAINS'
-        measurements_container.ValueType = 'CONTAINER'
-        measurements_container.ContinuityOfContent = 'SEPARATE'
-        measurements_container.ConceptNameCodeSequence = [Dataset()]
-        measurements_container.ConceptNameCodeSequence[0].CodeValue = 'MEASUREMENTS'
-        measurements_container.ConceptNameCodeSequence[0].CodingSchemeDesignator = '99LEG'
-        measurements_container.ConceptNameCodeSequence[0].CodeMeaning = 'Leg Length Measurements'
-        
         measurement_items = []
         for name, data in measurements_data.items():
             # Add centimeter measurement only (removed pixel measurements)
@@ -379,6 +358,14 @@ class UnifiedOutputGenerator:
                 conf_item.MeasuredValueSequence[0].MeasurementUnitsCodeSequence[0].CodeMeaning = "unity"
                 measurement_items.append(conf_item)
         
+        measurements_container = Dataset()
+        measurements_container.RelationshipType = 'CONTAINS'
+        measurements_container.ValueType = 'CONTAINER'
+        measurements_container.ContinuityOfContent = 'SEPARATE'
+        measurements_container.ConceptNameCodeSequence = [Dataset()]
+        measurements_container.ConceptNameCodeSequence[0].CodeValue = 'MEASUREMENTS'
+        measurements_container.ConceptNameCodeSequence[0].CodingSchemeDesignator = '99LEG'
+        measurements_container.ConceptNameCodeSequence[0].CodeMeaning = 'Leg Length Measurements'
         measurements_container.ContentSequence = measurement_items
         content_items.append(measurements_container)
         
@@ -435,7 +422,7 @@ class UnifiedOutputGenerator:
             disagreement_data = ensemble_info['disagreement_metrics']
         
         # Detection Disagreement
-        detection_score = disagreement_data.get('detection_disagreement', 0.0)
+        detection_score = disagreement_data.get('detection_disagreement_score', 0.0)
         detection_item = Dataset()
         detection_item.RelationshipType = 'CONTAINS'
         detection_item.ValueType = 'TEXT'
@@ -459,7 +446,7 @@ class UnifiedOutputGenerator:
         problem_points = detection_details.get('problem_points', [])
         
         detection_text = f"DETECTION DISAGREEMENT: {detection_score:.3f}\n"
-        detection_text += f"→ {detection_level}\n"
+        detection_text += f"- {detection_level}\n"
         detection_text += f"Details: {len(missing_points)}/{total_points} points missing from some models\n"
         if problem_points:
             detection_text += f"Problem points: {', '.join([f'P{p}' for p in problem_points])}"
@@ -468,7 +455,7 @@ class UnifiedOutputGenerator:
         disagreement_items.append(detection_item)
         
         # Localization Disagreement
-        localization_score = disagreement_data.get('localization_disagreement', 0.0)
+        localization_score = disagreement_data.get('localization_disagreement_score', 0.0)
         localization_item = Dataset()
         localization_item.RelationshipType = 'CONTAINS'
         localization_item.ValueType = 'TEXT'
@@ -491,21 +478,23 @@ class UnifiedOutputGenerator:
         threshold_mm = localization_details.get('threshold_mm', 2.0)
         
         localization_text = f"LOCALIZATION DISAGREEMENT: {localization_score:.3f}\n"
-        localization_text += f"→ {localization_level}\n"
-        localization_text += f"Details: {len(threshold_exceeded)}/8 points exceed {threshold_mm}mm threshold\n"
+        localization_text += f"- {localization_level}\n"
         if threshold_exceeded:
+            localization_text += f"Details: {len(threshold_exceeded)}/8 points exceed {threshold_mm}mm threshold\n"
             problem_list = []
             for point_data in threshold_exceeded:
                 point_id = point_data.get('point_id', 'Unknown')
                 distance = point_data.get('max_distance_mm', 0)
                 problem_list.append(f"P{point_id}({distance:.1f}mm)")
             localization_text += f"Problem points: {', '.join(problem_list)}"
+        else:
+            localization_text += f"Details: 0/8 points exceed {threshold_mm}mm threshold"
         
         localization_item.TextValue = localization_text
         disagreement_items.append(localization_item)
         
         # Outlier Risk
-        outlier_score = disagreement_data.get('outlier_risk', 0.0)
+        outlier_score = disagreement_data.get('outlier_risk_score', 0.0)
         outlier_item = Dataset()
         outlier_item.RelationshipType = 'CONTAINS'
         outlier_item.ValueType = 'TEXT'
@@ -528,7 +517,7 @@ class UnifiedOutputGenerator:
         outlier_points = outlier_details.get('outlier_points', [])
         
         outlier_text = f"OUTLIER RISK: {outlier_score:.3f}\n"
-        outlier_text += f"→ {outlier_level}\n"
+        outlier_text += f"- {outlier_level}\n"
         if outlier_points:
             outlier_text += f"Details: {len(outlier_points)} points exceed {outlier_threshold_mm}mm disagreement threshold\n"
             problem_list = []
@@ -744,34 +733,18 @@ class UnifiedOutputGenerator:
         return recommendations
     
     def _save_as_dicom(self, image_array, original_dcm, output_path, description):
-        """Save image array as DICOM file."""
-        file_meta = Dataset()
-        file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.7'
-        file_meta.MediaStorageSOPInstanceUID = generate_uid()
-        file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+        """Save image array as DICOM file by copying original and modifying only what's needed."""
+        # Copy the entire original DICOM
+        new_ds = original_dcm.copy()
         
-        # Create the dataset
-        new_ds = FileDataset(output_path, {}, file_meta=file_meta, preamble=b"\0" * 128)
-        
-        # Copy necessary attributes from original DICOM
-        attrs_to_copy = [
-            'PatientName', 'PatientID', 'PatientBirthDate', 'PatientSex',
-            'StudyInstanceUID', 'StudyID', 'StudyDate', 'SeriesNumber',
-            'PixelSpacing', 'AccessionNumber', 'ReferringPhysicianName'
-        ]
-        
-        for attr in attrs_to_copy:
-            if hasattr(original_dcm, attr):
-                setattr(new_ds, attr, getattr(original_dcm, attr))
-        
-        # Set required attributes
+        # Update only the fields that need to change
         new_ds.SeriesInstanceUID = generate_uid()
-        new_ds.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
-        new_ds.SOPClassUID = file_meta.MediaStorageSOPClassUID
-        new_ds.SeriesDescription = description
-        new_ds.InstanceNumber = 1
+        new_ds.SOPInstanceUID = generate_uid()
+        new_ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.7'  # Secondary Capture
+        new_ds.Modality = 'SC'
+        new_ds.ConversionType = 'WSD'
         
-        # Set image-specific attributes
+        # Update image-specific attributes
         new_ds.SamplesPerPixel = 3
         new_ds.PhotometricInterpretation = 'RGB'
         new_ds.PlanarConfiguration = 0
@@ -782,21 +755,8 @@ class UnifiedOutputGenerator:
         new_ds.Rows = image_array.shape[0]
         new_ds.Columns = image_array.shape[1]
         
-        # Set additional required attributes
-        new_ds.ImagePositionPatient = ['0', '0', '0']
-        new_ds.ImageOrientationPatient = ['1', '0', '0', '0', '1', '0']
-        new_ds.FrameOfReferenceUID = generate_uid()
-        new_ds.Modality = 'SC'
-        new_ds.ConversionType = 'WSD'
-        
-        dt = datetime.now()
-        new_ds.ContentDate = dt.strftime('%Y%m%d')
-        new_ds.ContentTime = dt.strftime('%H%M%S')
-        
         # Set pixel data
         new_ds.PixelData = image_array.tobytes()
         
         # Save the DICOM
-        new_ds.is_implicit_VR = False
-        new_ds.is_little_endian = True
         new_ds.save_as(output_path, write_like_original=False) 

@@ -99,15 +99,15 @@ def download_models():
     # Get the directory of the current file
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Load registry from leglength package
-    registry_path = os.path.join(current_dir, 'leglength', 'registry.json')
+    # Load registry from project root (same directory as download_models.py)
+    registry_path = os.path.join(current_dir, 'registry.json')
     
     try:
         with open(registry_path, 'r') as f:
             registry = json.load(f)
     except FileNotFoundError:
         print(f"❌ Registry file not found: {registry_path}")
-        print("Please ensure registry.json exists with model URLs")
+        print("Please ensure registry.json exists in the project root with model URLs")
         return
     except json.JSONDecodeError as e:
         print(f"❌ Invalid JSON in registry file: {e}")
