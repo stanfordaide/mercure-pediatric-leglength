@@ -12,18 +12,18 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive \
-    TORCH_HOME=/flywheel/v0/.cache
+    TORCH_HOME=/app/v0/.cache
 
 # Flywheel spec (v0)
-ENV FLYWHEEL=/flywheel/v0
-RUN mkdir -p ${FLYWHEEL}
+ENV HOME_DIR=/app/v0
+RUN mkdir -p ${HOME_DIR}
 
 # Set the working directory
 # Note: This is the directory where the gear is run
-WORKDIR ${FLYWHEEL}
+WORKDIR ${HOME_DIR}
 
 # Create non-root user for security
-RUN groupadd -r flywheel && useradd -r -g flywheel -d ${FLYWHEEL} -s /bin/bash flywheel
+RUN groupadd -r mercureapp && useradd -r -g mercureapp -d ${HOME_DIR} -s /bin/bash mercureapp
 
 # 1. Update package list for apt-get
 # 2. Use apt-get to install required packages, 
@@ -47,40 +47,41 @@ RUN apt-get update -qq && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Upgrade pip and install Python dependencies
-COPY requirements.txt ${FLYWHEEL}/requirements.txt
+COPY requirements.txt ${HOME_DIR}/requirements.txt
 RUN pip3 install --upgrade pip setuptools wheel && \
     pip3 install flywheel-sdk && \
     pip3 install -r requirements.txt
 
 # Create models and cache directories
-RUN mkdir -p ${FLYWHEEL}/models ${FLYWHEEL}/.cache
+RUN mkdir -p ${HOME_DIR}/models ${HOME_DIR}/.cache
 
 # Copy the application files
-COPY leglength ${FLYWHEEL}/leglength
-COPY download_models.py ${FLYWHEEL}/download_models.py
-COPY run.py ${FLYWHEEL}/run.py
+COPY leglength ${HOME_DIR}/leglength
+COPY download_models.py ${HOME_DIR}/download_models.py
+COPY run.py ${HOME_DIR}/run.py
+COPY docker_entrypoint.sh ${HOME_DIR}/docker_entrypoint.sh
 
 # Download all model checkpoints
 # Note: Comment out if you want to download models at runtime instead
 RUN python3 download_models.py
 
 # Set proper ownership and permissions
-RUN chown -R flywheel:flywheel ${FLYWHEEL} && \
-    chmod a+x ${FLYWHEEL}/run.py
+RUN chown -R mercureapp:mercureapp ${HOME_DIR} && \
+    chmod a+x ${HOME_DIR}/run.py
 
 # Add health check to verify container readiness
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python3 -c "import sys; sys.exit(0)" || exit 1
 
 # Switch to non-root user
-USER flywheel
+USER mercureapp
 
 # Add labels for better container management
 LABEL maintainer="Arogya Koirala" \
-      description="Leg Length Analysis Gear" \
+      description="Leg Length Analysis Module" \
       version="1.0" \
-      org.opencontainers.image.title="fw-leglength" \
-      org.opencontainers.image.description="Flywheel gear for leg length analysis"
+      org.opencontainers.image.title="mercure-leglength" \
+      org.opencontainers.image.description="Mercure processing module for leg length analysis"
 
 # Configure entrypoint with proper signal handling
 ENTRYPOINT ["python3", "run.py"]
