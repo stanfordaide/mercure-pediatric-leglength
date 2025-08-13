@@ -52,6 +52,10 @@ def load_config(input_dir: Path, log: logging.Logger) -> dict:
                 config = task["process"].get("settings", {})
                 log.info(f"Loaded configuration from {task_file}")
                 log.info(f"Extracted config: {json.dumps(config, indent=2)}")
+                # Ensure we have the actual settings, not nested structure
+                if isinstance(config, dict) and "settings" in config:
+                    config = config["settings"]
+                    log.info(f"Final config after extraction: {json.dumps(config, indent=2)}")
             else:
                 config = {}
                 log.warning("No 'process.settings' found in task.json")
