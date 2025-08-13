@@ -28,7 +28,7 @@ def load_config(input_dir: Path, log: logging.Logger) -> dict:
     """Load configuration from task.json in input directory, or use defaults."""
     # Default configuration
     defaults = {
-        'mode': 'single',
+        'mode': 'ensemble',
         'model': 'resnext101_32x8d',
         'ensemble_models': ['resnet101', 'efficientnet_v2_m', 'mobilenet_v3_large'],
         'conf_threshold': 0.1,

@@ -19,7 +19,7 @@ A Docker-based application for automated pediatric leg length measurements from 
 
 1. **Build the Docker image:**
 ```bash
-docker build -t stanfordaide/pediatric-leglength .
+docker build -t stanfordaide/pediatric-leglength:latest .
 ```
 
 2. **Prepare your data:**
