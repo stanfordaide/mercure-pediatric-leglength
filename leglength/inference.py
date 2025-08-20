@@ -15,7 +15,8 @@ def run_inference(
     output_dir: str,
     confidence_threshold: float = 0.5,
     best_per_class: bool = True,
-    logger: logging.Logger = None
+    logger: logging.Logger = None,
+    discrepancy_threshold_cm: float = 2.0
 ) -> dict:
     """
     Run inference on a DICOM image and save keypoint predictions.
@@ -61,7 +62,7 @@ def run_inference(
         # Calculate measurements
         logger.info("Calculating measurements...")
         measurements = LegMeasurements()
-        results = measurements.calculate_distances(predictions, dicom_path)
+        results = measurements.calculate_distances(predictions, dicom_path, discrepancy_threshold_cm)
         
         # Save JSON report
         json_path = os.path.join(output_dir, f"{base_name}_measurements.json")
@@ -96,7 +97,8 @@ def run_unified_single_inference(
     output_dir: str,
     confidence_threshold: float = 0.5,
     best_per_class: bool = True,
-    logger: logging.Logger = None
+    discrepancy_threshold_cm: float = 2.0,
+    logger: logging.Logger = None,
 ) -> dict:
     """
     Run single model inference and generate unified outputs (same format as ensemble).
@@ -132,7 +134,8 @@ def run_unified_single_inference(
             output_dir=temp_dir,
             confidence_threshold=confidence_threshold,
             best_per_class=best_per_class,
-            logger=logger
+            logger=logger,
+            discrepancy_threshold_cm=discrepancy_threshold_cm
         )
         
         # Convert to unified format
@@ -142,7 +145,7 @@ def run_unified_single_inference(
         # Calculate measurements using unified predictions
         logger.info("Calculating measurements from unified predictions...")
         measurements = LegMeasurements()
-        measurements_data = measurements.calculate_distances(unified_predictions, dicom_path)
+        measurements_data = measurements.calculate_distances(unified_predictions, dicom_path, discrepancy_threshold_cm)
         
         # Generate unified outputs
         logger.info("Generating unified outputs...")

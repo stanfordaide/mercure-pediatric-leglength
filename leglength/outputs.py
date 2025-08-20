@@ -186,17 +186,33 @@ class LegMeasurements:
         new_ds.is_little_endian = True
         new_ds.save_as(output_path, write_like_original=False)
         logger.info(f"Saved QA visualization DICOM to {output_path}")
+
     
-    def calculate_distances(self, predictions: Dict, dicom_path: str) -> Dict[str, Dict[str, float]]:
+    def _classify_discrepancy(self, diff_cm: float, right_cm: float, left_cm: float,
+                            threshold_cm: float, category: str) -> str:
+        # category: 'femur', 'tibia', 'total'
+        if threshold_cm is None:
+            return ""
+
+        if diff_cm <= threshold_cm:
+            if category == 'femur':
+                return "There is no femoral length discrepancy."
+            elif category == 'tibia':
+                return "There is no tibial length discrepancy."
+            else:
+                return "There is no leg length discrepancy."
+        else:
+            if category == 'femur':
+                return "The right femur is longer." if right_cm > left_cm else "The left femur is longer."
+            elif category == 'tibia':
+                return "The right tibia is longer." if right_cm > left_cm else "The left tibia is longer."
+            else:
+                return "The right leg is longer." if right_cm > left_cm else "The left leg is longer."
+
+    def calculate_distances(self, predictions: Dict, dicom_path: str, threshold_cm: float = None) -> Dict[str, Dict[str, float]]:
         """
         Calculate distances between keypoints based on predictions.
-        
-        Args:
-            predictions: Dictionary containing boxes, scores, and labels from detector
-            dicom_path: Path to original DICOM file for pixel spacing
-            
-        Returns:
-            Dictionary containing measurements in both pixels and millimeters
+        threshold_cm: optional threshold for reporting discrepancies in centimeters.
         """
         # Load DICOM for pixel spacing
         dcm = pydicom.dcmread(dicom_path)
@@ -254,15 +270,53 @@ class LegMeasurements:
                 (pixel_spacing_x**2 + pixel_spacing_y**2) / 2
             )
             
+            # Store both millimeters and centimeters
+            cm_distance = mm_distance / 10.0
             measurements[name] = {
-                'pixels': float(pixel_distance),
-                'millimeters': float(mm_distance),
+                'millimeters': mm_distance,
+                'centimeters': cm_distance,
                 'points': {
                     'start': {'x': float(p1[0]), 'y': float(p1[1])},
                     'end': {'x': float(p2[0]), 'y': float(p2[1])}
                 }
             }
         
+        # Derive right/left totals and differences (cm)
+        # Expect keys: femur_r, tibia_r, femur_l, tibia_l
+        def get_cm(k): return measurements.get(k, {}).get('centimeters', 0.0)
+        femur_r_cm = get_cm('femur_r')
+        tibia_r_cm = get_cm('tibia_r')
+        femur_l_cm = get_cm('femur_l')
+        tibia_l_cm = get_cm('tibia_l')
+
+        total_right_cm = femur_r_cm + tibia_r_cm
+        total_left_cm  = femur_l_cm + tibia_l_cm
+
+        femur_diff_cm = abs(femur_r_cm - femur_l_cm)
+        tibia_diff_cm = abs(tibia_r_cm - tibia_l_cm)
+        total_diff_cm = abs(total_right_cm - total_left_cm)
+
+        # Store derived metrics
+        measurements['femur_r_cm'] = {'millimeters': femur_r_cm * 10, 'centimeters': femur_r_cm}
+        measurements['tibia_r_cm'] = {'millimeters': tibia_r_cm * 10, 'centimeters': tibia_r_cm}
+        measurements['femur_l_cm'] = {'millimeters': femur_l_cm * 10, 'centimeters': femur_l_cm}
+        measurements['tibia_l_cm'] = {'millimeters': tibia_l_cm * 10, 'centimeters': tibia_l_cm}
+
+        measurements['total_right_cm'] = {'millimeters': total_right_cm * 10, 'centimeters': total_right_cm}
+        measurements['total_left_cm']  = {'millimeters': total_left_cm * 10, 'centimeters': total_left_cm}
+        measurements['femur_diff_cm'] = {'value_cm': femur_diff_cm}
+        measurements['tibia_diff_cm'] = {'value_cm': tibia_diff_cm}
+        measurements['total_diff_cm'] = {'value_cm': total_diff_cm}
+
+        # Discrepancy messages (threshold-driven)
+        femur_disc  = self._classify_discrepancy(femur_diff_cm, femur_r_cm, femur_l_cm, threshold_cm, 'femur')
+        tibia_disc  = self._classify_discrepancy(tibia_diff_cm, tibia_r_cm, tibia_l_cm, threshold_cm, 'tibia')
+        total_disc  = self._classify_discrepancy(total_diff_cm, total_right_cm, total_left_cm, threshold_cm, 'total')
+
+        measurements['femur_discrepancy'] = {'text': femur_disc}
+        measurements['tibia_discrepancy'] = {'text': tibia_disc}
+        measurements['total_discrepancy'] = {'text': total_disc}
+
         self.measurements = measurements
         return measurements
     
@@ -376,6 +430,11 @@ class LegMeasurements:
         with open(output_path, 'w') as f:
             json.dump({
                 'measurements': self.measurements,
+                'discrepancies': {
+                    'femur': self.measurements.get('femur_discrepancy', {}).get('text', None),
+                    'tibia': self.measurements.get('tibia_discrepancy', {}).get('text', None),
+                    'total': self.measurements.get('total_discrepancy', {}).get('text', None),
+                },
                 'pixel_spacing': [float(x) for x in self.pixel_spacing] if self.pixel_spacing else None
             }, f, indent=4)
         logger.info(f"Saved JSON report to {output_path}")

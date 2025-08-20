@@ -65,7 +65,7 @@ RUN python3 download_models.py
 
 # Copy the remaining application files
 # This layer will be invalidated when application code changes, but models won't be re-downloaded
-COPY leglength ${HOME_DIR}/leglength
+COPY leglength2 ${HOME_DIR}/leglength2
 COPY run.py ${HOME_DIR}/run.py
 COPY docker_entrypoint.sh ${HOME_DIR}/docker_entrypoint.sh
 

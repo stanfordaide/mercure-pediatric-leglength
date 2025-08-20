@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from leglength.inference import run_unified_single_inference
+from leglength2.inference import run_inference
 from leglength.ensemble import run_ensemble_inference, DEFAULT_ENSEMBLE_MODELS
 import os
 import json
@@ -138,135 +138,160 @@ def validate_config(config: dict, log: logging.Logger) -> list:
     
     return errors
 
-def process_image(dicom_path: Path, output_dir: Path, config: dict, log: logging.Logger) -> None:
-    """Process a single DICOM image with either single or ensemble mode."""
-    if config['mode'] == 'single':
-        results = run_unified_single_inference(
-            model_name=config['model'],
-            dicom_path=str(dicom_path),
-            output_dir=str(output_dir),
-            confidence_threshold=config['conf_threshold'],
-            best_per_class=True,  # Always use best per class
-            logger=log
-        )
-    else:
-        results = run_ensemble_inference(
-            models=config['ensemble_models'],
-            dicom_path=str(dicom_path),
-            output_dir=str(output_dir),
-            confidence_threshold=config['conf_threshold'],
-            best_per_class=True,  # Always use best per class
-            enable_disagreement=config['enable_disagreement'],
-            detection_weight=config['detection_weight'],
-            outlier_weight=config['outlier_weight'],
-            localization_weight=config['localization_weight'],
-            logger=log
-        )
-    
-    # Log output files
-    for output_type, path in results['output_files'].items():
-        log.info(f"  📁 {output_type}: {Path(path).name}")
-    
-    # Log disagreement metrics for ensemble mode
-    if config['mode'] == 'ensemble' and config['enable_disagreement']:
-        if dm := results.get('disagreement_metrics'):
-            if score := dm.get('overall_disagreement_score'):
-                log.info(f"Overall disagreement score: {score:.3f}")
-                if score > 0.5:
-                    log.warning("⚠️  High disagreement detected - consider manual review")
-                elif score > 0.2:
-                    log.info("ℹ️  Moderate disagreement detected")
-                else:
-                    log.info("✅ Low disagreement - high confidence results")
 
-def ready_outputs(tmp_dir: Path, output_dir: Path, qa_series_uid: str, sr_series_uid: str, config: dict, log: logging.Logger) -> None:
-    """Move and update output files from temporary directory to final output directory."""
-    log.info("Moving output files to final destination...")
+def process_image2(dicom_path: Path, output_dir: Path, config: dict, log: logging.Logger) -> None:
+    if config['mode'] == 'single':
+        models = [config['model']]
+    else:
+        models = config['ensemble_models']
     
-    # Create output directory if it doesn't exist
-    output_dir.mkdir(parents=True, exist_ok=True)
+    results = run_inference(
+        models=[config['model']],
+        dicom_path=str(dicom_path),
+        output_dir=str(output_dir),
+        confidence_threshold=config['conf_threshold'],
+        best_per_class=True,  # Always use best per class
+        enable_disagreement=config['enable_disagreement'],
+        detection_weight=config['detection_weight'],
+        outlier_weight=config['outlier_weight'],
+        localization_weight=config['localization_weight'],
+        discrepancy_threshold_cm=config['discrepancy_threshold_cm'],
+        logger=log
+    )
     
-    # Move and process all files
-    for file in os.listdir(tmp_dir):
-        src = tmp_dir / file
-        dst = output_dir / file
+    
+
+# def process_image(dicom_path: Path, output_dir: Path, config: dict, log: logging.Logger) -> None:
+#     """Process a single DICOM image with either single or ensemble mode."""
+#     if config['mode'] == 'single':
+#         results = run_unified_single_inference(
+#             model_name=config['model'],
+#             dicom_path=str(dicom_path),
+#             output_dir=str(output_dir),
+#             confidence_threshold=config['conf_threshold'],
+#             best_per_class=True,  # Always use best per class
+#             discrepancy_threshold_cm=config['discrepancy_threshold_cm'],
+#             logger=log
+#         )
+#     else:
+#         results = run_ensemble_inference(
+#             models=config['ensemble_models'],
+#             dicom_path=str(dicom_path),
+#             output_dir=str(output_dir),
+#             confidence_threshold=config['conf_threshold'],
+#             best_per_class=True,  # Always use best per class
+#             enable_disagreement=config['enable_disagreement'],
+#             detection_weight=config['detection_weight'],
+#             outlier_weight=config['outlier_weight'],
+#             localization_weight=config['localization_weight'],
+#             discrepancy_threshold_cm=config['discrepancy_threshold_cm'],
+#             logger=log
+#         )
+    
+#     # Log output files
+#     for output_type, path in results['output_files'].items():
+#         log.info(f"  📁 {output_type}: {Path(path).name}")
+    
+#     # Log disagreement metrics for ensemble mode
+#     if config['mode'] == 'ensemble' and config['enable_disagreement']:
+#         if dm := results.get('disagreement_metrics'):
+#             if score := dm.get('overall_disagreement_score'):
+#                 log.info(f"Overall disagreement score: {score:.3f}")
+#                 if score > 0.5:
+#                     log.warning("⚠️  High disagreement detected - consider manual review")
+#                 elif score > 0.2:
+#                     log.info("ℹ️  Moderate disagreement detected")
+#                 else:
+#                     log.info("✅ Low disagreement - high confidence results")
+
+# def ready_outputs(tmp_dir: Path, output_dir: Path, qa_series_uid: str, sr_series_uid: str, config: dict, log: logging.Logger) -> None:
+#     """Move and update output files from temporary directory to final output directory."""
+#     log.info("Moving output files to final destination...")
+    
+#     # Create output directory if it doesn't exist
+#     output_dir.mkdir(parents=True, exist_ok=True)
+    
+#     # Move and process all files
+#     for file in os.listdir(tmp_dir):
+#         src = tmp_dir / file
+#         dst = output_dir / file
         
-        try:
-            if file.endswith('.dcm'):
-                # Update DICOM headers
-                ds = pydicom.dcmread(src)
-                if 'qa_visualization' in file:
-                    ds.SeriesInstanceUID = qa_series_uid
-                elif 'measurements_report' in file:
-                    ds.SeriesInstanceUID = sr_series_uid
-                else:
-                    ds.SeriesInstanceUID = qa_series_uid  # Default to QA series
-                ds.SOPInstanceUID = generate_uid()
+#         try:
+#             if file.endswith('.dcm'):
+#                 # Update DICOM headers
+#                 ds = pydicom.dcmread(src)
+#                 if 'qa_visualization' in file:
+#                     ds.SeriesInstanceUID = qa_series_uid
+#                 elif 'measurements_report' in file:
+#                     ds.SeriesInstanceUID = sr_series_uid
+#                 else:
+#                     ds.SeriesInstanceUID = qa_series_uid  # Default to QA series
+#                 ds.SOPInstanceUID = generate_uid()
                 
-                # Safely handle SeriesNumber with sequential offset for multiple output series
-                try:
-                    current_series = int(getattr(ds, "SeriesNumber", 0) or 0)
-                    if 'qa_visualization' in file:
-                        # First output series: original + series_offset
-                        ds.SeriesNumber = current_series + config["series_offset"]
-                    elif 'measurements_report' in file:
-                        # Second output series: original + (2 * series_offset)
-                        ds.SeriesNumber = current_series + (2 * config["series_offset"])
-                    else:
-                        # Other files: original + series_offset
-                        ds.SeriesNumber = current_series + config["series_offset"]
-                except (ValueError, TypeError):
-                    if 'qa_visualization' in file:
-                        ds.SeriesNumber = config["series_offset"]
-                    elif 'measurements_report' in file:
-                        ds.SeriesNumber = 2 * config["series_offset"]
-                    else:
-                        ds.SeriesNumber = config["series_offset"]
+#                 # Safely handle SeriesNumber with sequential offset for multiple output series
+#                 try:
+#                     current_series = int(getattr(ds, "SeriesNumber", 0) or 0)
+#                     if 'qa_visualization' in file:
+#                         # First output series: original + series_offset
+#                         ds.SeriesNumber = current_series + config["series_offset"]
+#                     elif 'measurements_report' in file:
+#                         # Second output series: original + (2 * series_offset)
+#                         ds.SeriesNumber = current_series + (2 * config["series_offset"])
+#                     else:
+#                         # Other files: original + series_offset
+#                         ds.SeriesNumber = current_series + config["series_offset"]
+#                 except (ValueError, TypeError):
+#                     if 'qa_visualization' in file:
+#                         ds.SeriesNumber = config["series_offset"]
+#                     elif 'measurements_report' in file:
+#                         ds.SeriesNumber = 2 * config["series_offset"]
+#                     else:
+#                         ds.SeriesNumber = config["series_offset"]
                 
-                # Update descriptions based on file type
-                if 'qa_visualization' in file:
-                    # Preserve original series description, just add SC prefix
-                    original_series_desc = getattr(ds, 'SeriesDescription', '')
-                    ds.SeriesDescription = f"SC({original_series_desc})" if original_series_desc else "SC"
+#                 # Update descriptions based on file type
+#                 if 'qa_visualization' in file:
+#                     # Preserve original series description, just add SC prefix
+#                     original_series_desc = getattr(ds, 'SeriesDescription', '')
+#                     ds.SeriesDescription = f"SC({original_series_desc})" if original_series_desc else "SC"
                     
-                    # Preserve original study description, just add AIDEOUT(LL()) prefix
-                    original_study_desc = getattr(ds, 'StudyDescription', '')
-                    if original_study_desc:
-                        ds.StudyDescription = f"AIDEOUT(SC({original_study_desc}))"
-                    else:
-                        ds.StudyDescription = "AIDEOUT(SC)"
+#                     # Preserve original study description, just add AIDEOUT(LL()) prefix
+#                     original_study_desc = getattr(ds, 'StudyDescription', '')
+#                     if original_study_desc:
+#                         ds.StudyDescription = f"AIDEOUT(SC({original_study_desc}))"
+#                     else:
+#                         ds.StudyDescription = "AIDEOUT(SC)"
                         
-                elif 'measurements_report' in file:
-                    # Preserve original series description, just add SR prefix
-                    original_series_desc = getattr(ds, 'SeriesDescription', '')
-                    ds.SeriesDescription = f"SR({original_series_desc})" if original_series_desc else "SR"
+#                 elif 'measurements_report' in file:
+#                     # Preserve original series description, just add SR prefix
+#                     original_series_desc = getattr(ds, 'SeriesDescription', '')
+#                     ds.SeriesDescription = f"SR({original_series_desc})" if original_series_desc else "SR"
                     
-                    # Preserve original study description, just add AIDEOUT(SR()) prefix
-                    original_study_desc = getattr(ds, 'StudyDescription', '')
-                    if original_study_desc:
-                        ds.StudyDescription = f"AIDEOUT(SR({original_study_desc}))"
-                    else:
-                        ds.StudyDescription = "AIDEOUT(SR)"
+#                     # Preserve original study description, just add AIDEOUT(SR()) prefix
+#                     original_study_desc = getattr(ds, 'StudyDescription', '')
+#                     if original_study_desc:
+#                         ds.StudyDescription = f"AIDEOUT(SR({original_study_desc}))"
+#                     else:
+#                         ds.StudyDescription = "AIDEOUT(SR)"
                         
-                else:
-                    # For any other DICOM files, preserve original descriptions
-                    original_study_desc = getattr(ds, 'StudyDescription', '')
-                    if original_study_desc:
-                        ds.StudyDescription = f"AIDEOUT({original_study_desc})"
-                    else:
-                        ds.StudyDescription = "AIDEOUT"
+#                 else:
+#                     # For any other DICOM files, preserve original descriptions
+#                     original_study_desc = getattr(ds, 'StudyDescription', '')
+#                     if original_study_desc:
+#                         ds.StudyDescription = f"AIDEOUT({original_study_desc})"
+#                     else:
+#                         ds.StudyDescription = "AIDEOUT"
                 
-                ds.save_as(dst)
-            else:
-                # Move non-DICOM files (e.g., JSON) directly
-                shutil.move(src, dst)
+#                 ds.save_as(dst)
+#             else:
+#                 # Move non-DICOM files (e.g., JSON) directly
+#                 shutil.move(src, dst)
                 
-        except Exception as e:
-            log.error(f"Error processing {file}: {e}")
+#         except Exception as e:
+#             log.error(f"Error processing {file}: {e}")
     
-    # Clean up temporary directory
-    shutil.rmtree(tmp_dir, ignore_errors=True)
-    log.debug("Cleaned up temporary directory")
+#     # Clean up temporary directory
+#     shutil.rmtree(tmp_dir, ignore_errors=True)
+#     log.debug("Cleaned up temporary directory")
 
 def main():
     """Main execution function."""
@@ -323,26 +348,41 @@ def main():
         
         # Process each series
         for series_id, dicom_files in series.items():
-            # For now, process first file in series (could be enhanced to handle multi-slice)
+            # Select the file with the highest InstanceNumber in the series
             if dicom_files:
-                dicom_path = Path(dicom_files[0])
-                log.info(f"Processing series {series_id}: {dicom_path.name}")
-                process_image(dicom_path, tmp_dir, config, log)
+                best_path = None
+                best_inst = -1
+                for f in dicom_files:
+                    try:
+                        ds = pydicom.dcmread(f, stop_before_pixels=True)
+                        inst = int(getattr(ds, "InstanceNumber", 0) or 0)
+                        if inst > best_inst:
+                            best_inst = inst
+                            best_path = Path(f)
+                    except Exception as e:
+                        log.debug(f"Could not read InstanceNumber from {f}: {e}")
+                if best_path is None:
+                    dicom_path = Path(dicom_files[0])
+                    log.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
+                else:
+                    dicom_path = best_path
+                    log.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
+                process_image2(dicom_path, tmp_dir, config, log)
         
-        # Move outputs to final destination with separate series UIDs for each output type
-        qa_series_uid = generate_uid()
-        sr_series_uid = generate_uid()
-        ready_outputs(tmp_dir, args.output_dir, qa_series_uid, sr_series_uid, config, log)
+        # # Move outputs to final destination with separate series UIDs for each output type
+        # qa_series_uid = generate_uid()
+        # sr_series_uid = generate_uid()
+        # ready_outputs(tmp_dir, args.output_dir, qa_series_uid, sr_series_uid, config, log)
         
-        # Log completion
-        log.info("=" * 60)
-        log.info("Analysis completed successfully!")
-        log.info("Output file descriptions:")
-        log.info("  🎨 QA Visualization: Enhanced DICOM with uncertainty indicators")
-        log.info("  📋 Measurements Report (DICOM): Structured clinical report")
-        log.info("  📊 Measurements Report (JSON): Comprehensive analysis data")
-        log.info("=" * 60)
-        log.info("✅ Module execution completed successfully")
+        # # Log completion
+        # log.info("=" * 60)
+        # log.info("Analysis completed successfully!")
+        # log.info("Output file descriptions:")
+        # log.info("  🎨 QA Visualization: Enhanced DICOM with uncertainty indicators")
+        # log.info("  📋 Measurements Report (DICOM): Structured clinical report")
+        # log.info("  📊 Measurements Report (JSON): Comprehensive analysis data")
+        # log.info("=" * 60)
+        # log.info("✅ Module execution completed successfully")
         
     except Exception as e:
         log.error(f"❌ Module execution failed: {e}")

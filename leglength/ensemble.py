@@ -213,7 +213,8 @@ def run_ensemble_inference(
     detection_weight: float = 0.5,
     outlier_weight: float = 0.35,
     localization_weight: float = 0.15,
-    logger: logging.Logger = None
+    logger: logging.Logger = None,
+    discrepancy_threshold_cm: float = 2.0
 ) -> Dict:
     """
     Run ensemble inference with multiple models and generate unified outputs.
@@ -279,7 +280,7 @@ def run_ensemble_inference(
     # Calculate measurements using fused predictions
     logger.info("Calculating measurements from fused predictions...")
     measurements = LegMeasurements()
-    measurements_data = measurements.calculate_distances(fused_predictions, dicom_path)
+    measurements_data = measurements.calculate_distances(fused_predictions, dicom_path, discrepancy_threshold_cm)
     
     # Calculate disagreement metrics if enabled
     disagreement_metrics = None
