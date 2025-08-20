@@ -8,6 +8,7 @@ from .measurements import LegMeasurements
 import torch
 from typing import Dict, List, Tuple, Optional
 import time
+import numpy as np
 
 
 
@@ -72,7 +73,6 @@ def infer(
     confidence_threshold: float = 0.5,
     best_per_class: bool = True,
     logger: logging.Logger = None,
-    discrepancy_threshold_cm: float = 2.0
 ) -> dict:
     """
     Run inference on a DICOM image and save keypoint predictions.
@@ -143,14 +143,15 @@ def run_inference(
     confidence_threshold: float = 0.5,
     best_per_class: bool = True,
     logger: logging.Logger = None,
-    discrepancy_threshold_cm: float = 2.0
 ):
+    logger = logging.getLogger(__name__)
     measurements = []
     start_time = time.time()
+    logger.info(f"AAAAH Running inference for models: {models}")
     for model_name in models:
-        measurements.append({model_name: infer(model_name, dicom_path, output_dir, confidence_threshold, best_per_class, logger, discrepancy_threshold_cm)})
+        measurements.append({model_name: infer(model_name, dicom_path, output_dir, confidence_threshold, best_per_class, logger)})
         
-    fused_measurements = fuse_measurements(models, measurements)
+    fused_measurements = fuse_measurements(models, measurements, logger)
         
 
     
@@ -159,7 +160,7 @@ def run_inference(
     end_time = time.time()
     logger.info(f"Inference time: {end_time - start_time} seconds")
 
-    return results
+    return fused_measurements
 
 
 
@@ -175,6 +176,8 @@ def fuse_measurements(
     else:
         logger.info(f"Fusing measurements for {models}")
         
+        
+        print(f"AAHH Model measurements: {model_measurements}")
         
         all_predictions = {}
         for model_name, results in model_measurements.items():

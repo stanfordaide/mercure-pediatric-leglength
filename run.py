@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from leglength2.inference import run_inference
-from leglength.ensemble import run_ensemble_inference, DEFAULT_ENSEMBLE_MODELS
+# from leglength.ensemble import run_ensemble_inference, DEFAULT_ENSEMBLE_MODELS
 import os
 import json
 import argparse
@@ -11,6 +11,10 @@ import shutil
 from pydicom.uid import generate_uid
 import pydicom
 import tempfile
+
+
+# Default ensemble models to use
+DEFAULT_ENSEMBLE_MODELS = ['convnext_base', 'resnext101_32x8d', 'vit_l_16']
 
 def parse_args():
     """Parse command line arguments."""
@@ -140,22 +144,25 @@ def validate_config(config: dict, log: logging.Logger) -> list:
 
 
 def process_image2(dicom_path: Path, output_dir: Path, config: dict, log: logging.Logger) -> None:
+    
+    log.info(f"AAHH Config: {config}")
+    
     if config['mode'] == 'single':
         models = [config['model']]
     else:
         models = config['ensemble_models']
     
+    
     results = run_inference(
-        models=[config['model']],
+        models=models,
         dicom_path=str(dicom_path),
         output_dir=str(output_dir),
         confidence_threshold=config['conf_threshold'],
         best_per_class=True,  # Always use best per class
-        enable_disagreement=config['enable_disagreement'],
-        detection_weight=config['detection_weight'],
-        outlier_weight=config['outlier_weight'],
-        localization_weight=config['localization_weight'],
-        discrepancy_threshold_cm=config['discrepancy_threshold_cm'],
+        # enable_disagreement=config['enable_disagreement'],
+        # detection_weight=config['detection_weight'],
+        # outlier_weight=config['outlier_weight'],
+        # localization_weight=config['localization_weight'],
         logger=log
     )
     
@@ -305,70 +312,70 @@ def main():
         print("Usage: run.py [input-folder] [output-folder]")
         sys.exit(1)
     
-    try:
-        log.info("=" * 60)
-        log.info("LPCH Pediatric Leg Length Analysis Module v0.2.0")
-        log.info("=" * 60)
-        
-        # Parse arguments and load configuration
-        args = parse_args()
-        
-        # Check if the input and output folders actually exist
-        if not args.input_dir.exists() or not args.output_dir.exists():
-            print("IN/OUT paths do not exist")
-            sys.exit(1)
-        
-        config = load_config(args.input_dir, log)
-        
-        # Validate configuration
-        validation_errors = validate_config(config, log)
-        if validation_errors:
-            log.error("Configuration validation failed:")
-            for error in validation_errors:
-                log.error(f"  - {error}")
-            sys.exit(1)
-        
-        # Log configuration
-        log.info("Configuration:")
-        for key, value in config.items():
-            log.info(f"  {key}: {value}")
-        
-        # Create temporary directory
-        tmp_dir = Path(tempfile.mkdtemp(prefix="leglength_"))
-        
-        # Process input directory
-        series = {}
-        for entry in os.scandir(args.input_dir):
-            if entry.name.endswith(".dcm") and not entry.is_dir():
-                # Group files by series
-                series_id = entry.name.split("#", 1)[0]
-                if series_id not in series:
-                    series[series_id] = []
-                series[series_id].append(entry.path)
-        
-        # Process each series
-        for series_id, dicom_files in series.items():
-            # Select the file with the highest InstanceNumber in the series
-            if dicom_files:
-                best_path = None
-                best_inst = -1
-                for f in dicom_files:
-                    try:
-                        ds = pydicom.dcmread(f, stop_before_pixels=True)
-                        inst = int(getattr(ds, "InstanceNumber", 0) or 0)
-                        if inst > best_inst:
-                            best_inst = inst
-                            best_path = Path(f)
-                    except Exception as e:
-                        log.debug(f"Could not read InstanceNumber from {f}: {e}")
-                if best_path is None:
-                    dicom_path = Path(dicom_files[0])
-                    log.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
-                else:
-                    dicom_path = best_path
-                    log.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
-                process_image2(dicom_path, tmp_dir, config, log)
-        
+    # try:
+    log.info("=" * 60)
+    log.info("LPCH Pediatric Leg Length Analysis Module v0.2.0")
+    log.info("=" * 60)
+    
+    # Parse arguments and load configuration
+    args = parse_args()
+    
+    # Check if the input and output folders actually exist
+    if not args.input_dir.exists() or not args.output_dir.exists():
+        print("IN/OUT paths do not exist")
+        sys.exit(1)
+    
+    config = load_config(args.input_dir, log)
+    
+    # Validate configuration
+    validation_errors = validate_config(config, log)
+    if validation_errors:
+        log.error("Configuration validation failed:")
+        for error in validation_errors:
+            log.error(f"  - {error}")
+        sys.exit(1)
+    
+    # Log configuration
+    log.info("Configuration:")
+    for key, value in config.items():
+        log.info(f"  {key}: {value}")
+    
+    # Create temporary directory
+    tmp_dir = Path(tempfile.mkdtemp(prefix="leglength_"))
+    
+    # Process input directory
+    series = {}
+    for entry in os.scandir(args.input_dir):
+        if entry.name.endswith(".dcm") and not entry.is_dir():
+            # Group files by series
+            series_id = entry.name.split("#", 1)[0]
+            if series_id not in series:
+                series[series_id] = []
+            series[series_id].append(entry.path)
+    
+    # Process each series
+    for series_id, dicom_files in series.items():
+        # Select the file with the highest InstanceNumber in the series
+        if dicom_files:
+            best_path = None
+            best_inst = -1
+            for f in dicom_files:
+                try:
+                    ds = pydicom.dcmread(f, stop_before_pixels=True)
+                    inst = int(getattr(ds, "InstanceNumber", 0) or 0)
+                    if inst > best_inst:
+                        best_inst = inst
+                        best_path = Path(f)
+                except Exception as e:
+                    log.debug(f"Could not read InstanceNumber from {f}: {e}")
+            if best_path is None:
+                dicom_path = Path(dicom_files[0])
+                log.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
+            else:
+                dicom_path = best_path
+                log.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
+            process_image2(dicom_path, tmp_dir, config, log)
+    
         # # Move outputs to final destination with separate series UIDs for each output type
         # qa_series_uid = generate_uid()
         # sr_series_uid = generate_uid()
@@ -384,10 +391,10 @@ def main():
         # log.info("=" * 60)
         # log.info("✅ Module execution completed successfully")
         
-    except Exception as e:
-        log.error(f"❌ Module execution failed: {e}")
-        log.error("Please check the configuration and input files")
-        sys.exit(1)
+    # except Exception as e:
+    #     log.error(f"❌ Module execution failed: {e}")
+    #     log.error("Please check the configuration and input files")
+    #     sys.exit(1)
 
 if __name__ == "__main__":
     main()
