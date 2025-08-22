@@ -1,33 +1,36 @@
 {
     "derived_points": [
         {
-            "name": "A",
+            "name": "PLL_R_KNC",
             "type": "midpoint",
             "source_points": [3, 5]
         },
         {
-            "name": "B",
+            "name": "PLL_L_KNC",
             "type": "midpoint",
             "source_points": [4, 6]
         }
     ],
     "measurements": [
         {
-            "name": "femur_r",
-            "join_points": [1, "A"]
+            "name": "PLL_R_FEM",
+            "join_points": [1, "PLL_R_KNC"],
+            "meaning": "Right femur length measurement"
         },
         {
-            "name": "tibia_r",
-            "join_points": ["A", 7]
+            "name": "PLL_R_TIB",
+            "join_points": ["PLL_R_KNC", 7],
+            "meaning": "Right tibia length measurement"
         },
         {
-            "name": "femur_l",
-            "join_points": [2, "B"]
+            "name": "PLL_L_FEM",
+            "join_points": [2, "PLL_L_KNC"],
+            "meaning": "Left femur length measurement"
         },
         {
-            "name": "tibia_l",
-            "join_points": ["B", 8]
-        }        
+            "name": "PLL_L_TIB",
+            "join_points": ["PLL_L_KNC", 8],
+            "meaning": "Left tibia length measurement"
+        }
     ]
 }
-

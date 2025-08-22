@@ -269,7 +269,7 @@ class LegLengthDetector:
         return model
     
     @torch.no_grad()
-    def predict(self, image: torch.Tensor, confidence_threshold: float = 0.5, best_per_class: bool = True) -> Dict:
+    def predict(self, image: torch.Tensor, confidence_threshold: float = 0.0, best_per_class: bool = True) -> Dict:
         """Run inference on a single image."""
         self.model.eval()
         image = image.to(self.device)

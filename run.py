@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-from leglength2.inference import run_inference
-# from leglength.ensemble import run_ensemble_inference, DEFAULT_ENSEMBLE_MODELS
+from leglength.outputs import DicomProcessor
+from leglength.inference import inference_handler
 import os
 import json
 import argparse
@@ -11,6 +11,7 @@ import shutil
 from pydicom.uid import generate_uid
 import pydicom
 import tempfile
+import time
 
 
 # Default ensemble models to use
@@ -32,15 +33,12 @@ def load_config(input_dir: Path, log: logging.Logger) -> dict:
     """Load configuration from task.json in input directory, or use defaults."""
     # Default configuration
     defaults = {
-        'mode': 'ensemble',
-        'model': 'resnext101_32x8d',
-        'ensemble_models': ['resnet101', 'efficientnet_v2_m', 'mobilenet_v3_large'],
-        'conf_threshold': 0.1,
-        'enable_disagreement': False,
-        'detection_weight': 0.5,
-        'outlier_weight': 0.35,
-        'localization_weight': 0.15,
-        'series_offset': 1000
+        'models': ['resnet101', 'efficientnet_v2_m', 'mobilenet_v3_large'],
+        'series_offset': 1000,
+        'femur_threshold': 2.0,
+        'tibia_threshold': 2.0,
+        'total_threshold': 5.0,
+        'confidence_threshold': 0.0
     }
     
     task_file = input_dir / "task.json"
@@ -84,88 +82,79 @@ def validate_config(config: dict, log: logging.Logger) -> list:
     """Validate configuration values and provide helpful error messages."""
     errors = []
     
-    # Validate mode
-    mode = config.get('mode', 'single')
-    if mode not in ['single', 'ensemble']:
-        errors.append(f"Invalid mode '{mode}'. Must be 'single' or 'ensemble'.")
-    
     # Load valid models from registry
     valid_models = [
         'resnet101', 'resnext101_32x8d', 'densenet201', 'vit_l_16',
         'efficientnet_v2_m', 'mobilenet_v3_large', 'swin_v2_b', 'convnext_base'
     ]
-    
-    # Validate model (for single mode)
-    if mode == 'single':
-        model = config.get('model', 'resnext101_32x8d')
-        if model not in valid_models:
-            errors.append(f"Invalid model '{model}'. Must be one of: {valid_models}")
-    
-    # Validate ensemble_models (for ensemble mode)
-    if mode == 'ensemble':
-        ensemble_models = config.get('ensemble_models', DEFAULT_ENSEMBLE_MODELS)
-        if not isinstance(ensemble_models, list):
-            errors.append("ensemble_models must be a list of model names")
-        elif len(ensemble_models) < 2:
-            errors.append("ensemble_models must contain at least 2 models")
-        elif len(ensemble_models) > 5:
-            errors.append("ensemble_models must contain at most 5 models")
-        else:
-            for em in ensemble_models:
-                if em not in valid_models:
-                    errors.append(f"Invalid ensemble model '{em}'. Must be one of: {valid_models}")
-            if len(set(ensemble_models)) != len(ensemble_models):
-                errors.append("ensemble_models must contain unique model names")
-    
+
+    # Validate models
+    models = config.get('models', DEFAULT_ENSEMBLE_MODELS)
+    if not isinstance(models, list):
+        errors.append("models must be passed as a list of model names")
+    else:
+        for em in models:
+            if em not in valid_models:
+                errors.append(f"Invalid ensemble model '{em}'. Must be one of: {valid_models}")
+        if len(set(models)) != len(models):
+            errors.append("models must contain unique model names")
+
+    # Validate numeric thresholds
+    for threshold in ['femur_threshold', 'tibia_threshold', 'total_threshold']:
+        value = config.get(threshold)
+        if not isinstance(value, (int, float)):
+            errors.append(f"{threshold} must be a number")
+        elif value < 0:
+            errors.append(f"{threshold} must be positive")
+
+    # Validate series offset
+    series_offset = config.get('series_offset')
+    if not isinstance(series_offset, int):
+        errors.append("series_offset must be an integer")
+    elif series_offset < 0:
+        errors.append("series_offset must be positive")
+
     # Validate confidence threshold
-    conf_threshold = config.get('conf_threshold', 0.1)
-    if not isinstance(conf_threshold, (int, float)) or not (0.0 <= conf_threshold <= 1.0):
-        errors.append("conf_threshold must be a number between 0.0 and 1.0")
-    
-    # Validate disagreement weights
-    weights = {
-        'detection_weight': 0.5,
-        'outlier_weight': 0.35,
-        'localization_weight': 0.15
-    }
-    weight_values = []
-    
-    for weight_name, default_value in weights.items():
-        value = config.get(weight_name, default_value)
-        if not isinstance(value, (int, float)) or not (0.0 <= value <= 1.0):
-            errors.append(f"{weight_name} must be a number between 0.0 and 1.0")
-        weight_values.append(value)
-    
-    # Check that weights sum to approximately 1.0
-    if abs(sum(weight_values) - 1.0) > 0.01:
-        log.warning(f"Disagreement weights sum to {sum(weight_values):.3f}, not 1.0. Consider adjusting for proper interpretation.")
-    
+    confidence_threshold = config.get('confidence_threshold')
+    if not isinstance(confidence_threshold, (int, float)):
+        errors.append("confidence_threshold must be a number")
+    elif confidence_threshold < 0 or confidence_threshold > 1:
+        errors.append("conf_threshold must be between 0 and 1")
+
     return errors
 
 
-def process_image2(dicom_path: Path, output_dir: Path, config: dict, log: logging.Logger) -> None:
-    
-    log.info(f"AAHH Config: {config}")
-    
-    if config['mode'] == 'single':
-        models = [config['model']]
-    else:
-        models = config['ensemble_models']
+def process_image2(dicom_path: Path, output_dir: Path, config: dict, logger: logging.Logger) -> None:
     
     
-    results = run_inference(
-        models=models,
+    
+    results = inference_handler(
+        models=config['models'],
         dicom_path=str(dicom_path),
         output_dir=str(output_dir),
-        confidence_threshold=config['conf_threshold'],
-        best_per_class=True,  # Always use best per class
-        # enable_disagreement=config['enable_disagreement'],
-        # detection_weight=config['detection_weight'],
-        # outlier_weight=config['outlier_weight'],
-        # localization_weight=config['localization_weight'],
-        logger=log
+        config=config,
+        logger=logger
     )
     
+    
+    logger.info(f"Output directory: {output_dir}")
+    
+    output_processor = DicomProcessor()
+    
+    qa_dicom = output_processor.get_qa_dicom(results, str(dicom_path))
+    
+    qa_dicom.is_implicit_VR = False
+    qa_dicom.is_little_endian = True
+    qa_dicom.save_as(str(output_dir / 'qa_output.dcm'), write_like_original=False)
+    
+    
+    
+    # Create SR DICOM
+    sr_dicom = output_processor.get_sr_dicom(results, str(dicom_path), config)
+    sr_dicom.save_as(str(output_dir / 'sr_output.dcm'), write_like_original=False)
+    
+
+    return results
     
 
 # def process_image(dicom_path: Path, output_dir: Path, config: dict, log: logging.Logger) -> None:
@@ -304,7 +293,7 @@ def main():
     """Main execution function."""
     # Set up logging
     logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
-    log = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
     
     # Check if the input and output folders are provided as arguments
     if len(sys.argv) < 3:
@@ -313,9 +302,9 @@ def main():
         sys.exit(1)
     
     # try:
-    log.info("=" * 60)
-    log.info("LPCH Pediatric Leg Length Analysis Module v0.2.0")
-    log.info("=" * 60)
+    logger.info("=" * 60)
+    logger.info("LPCH Pediatric Leg Length Analysis Module v0.2.0")
+    logger.info("=" * 60)
     
     # Parse arguments and load configuration
     args = parse_args()
@@ -325,20 +314,20 @@ def main():
         print("IN/OUT paths do not exist")
         sys.exit(1)
     
-    config = load_config(args.input_dir, log)
+    config = load_config(args.input_dir, logger)
     
     # Validate configuration
-    validation_errors = validate_config(config, log)
+    validation_errors = validate_config(config, logger)
     if validation_errors:
-        log.error("Configuration validation failed:")
+        logger.error("Configuration validation failed:")
         for error in validation_errors:
-            log.error(f"  - {error}")
+            logger.error(f"  - {error}")
         sys.exit(1)
     
     # Log configuration
-    log.info("Configuration:")
+    logger.info("Configuration:")
     for key, value in config.items():
-        log.info(f"  {key}: {value}")
+        logger.info(f"  {key}: {value}")
     
     # Create temporary directory
     tmp_dir = Path(tempfile.mkdtemp(prefix="leglength_"))
@@ -367,34 +356,39 @@ def main():
                         best_inst = inst
                         best_path = Path(f)
                 except Exception as e:
-                    log.debug(f"Could not read InstanceNumber from {f}: {e}")
+                    logger.debug(f"Could not read InstanceNumber from {f}: {e}")
             if best_path is None:
                 dicom_path = Path(dicom_files[0])
-                log.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
+                logger.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
             else:
                 dicom_path = best_path
-                log.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
-            process_image2(dicom_path, tmp_dir, config, log)
+                logger.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
+            results = process_image2(dicom_path, args.output_dir, config, logger)
+            logger.info(f"Results: {results}")
+            
+            
+        
     
         # # Move outputs to final destination with separate series UIDs for each output type
         # qa_series_uid = generate_uid()
         # sr_series_uid = generate_uid()
-        # ready_outputs(tmp_dir, args.output_dir, qa_series_uid, sr_series_uid, config, log)
+        # ready_outputs(tmp_dir, args.output_dir, qa_series_uid, sr_series_uid, config, logger)
         
         # # Log completion
-        # log.info("=" * 60)
-        # log.info("Analysis completed successfully!")
-        # log.info("Output file descriptions:")
-        # log.info("  🎨 QA Visualization: Enhanced DICOM with uncertainty indicators")
-        # log.info("  📋 Measurements Report (DICOM): Structured clinical report")
-        # log.info("  📊 Measurements Report (JSON): Comprehensive analysis data")
-        # log.info("=" * 60)
-        # log.info("✅ Module execution completed successfully")
+        # logger.info("=" * 60)
+        # logger.info("Analysis completed successfully!")
+        # logger.info("Output file descriptions:")
+        # logger.info("  🎨 QA Visualization: Enhanced DICOM with uncertainty indicators")
+        # logger.info("  📋 Measurements Report (DICOM): Structured clinical report")
+        # logger.info("  📊 Measurements Report (JSON): Comprehensive analysis data")
+        # logger.info("=" * 60)
+        # logger.info("✅ Module execution completed successfully")
         
     # except Exception as e:
-    #     log.error(f"❌ Module execution failed: {e}")
-    #     log.error("Please check the configuration and input files")
+    #     logger.error(f"❌ Module execution failed: {e}")
+    #     logger.error("Please check the configuration and input files")
     #     sys.exit(1)
 
 if __name__ == "__main__":
+    
     main()
