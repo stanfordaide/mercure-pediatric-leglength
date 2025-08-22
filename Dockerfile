@@ -14,7 +14,7 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     TORCH_HOME=/app/v0/.cache
 
-# Flywheel spec (v0)
+# Home directory setup
 ENV HOME_DIR=/app/v0
 RUN mkdir -p ${HOME_DIR}
 
