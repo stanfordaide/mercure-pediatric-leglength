@@ -425,7 +425,7 @@ def fuse_predictions(
                 'std_spatial_disagreement_mm': float(std_dist),
                 'spatial_uncertainty_mm': float(uncertainties['spatial_uncertainty_mm']),
                 'pct_predictions_over_2mm': float(pct_over_2mm),
-                'description': f"Point {point_idx}: Models disagree by up to {max_dist:.1f}mm, {pct_over_2mm:.1f}% prediction pairs >2mm apart"
+                'description': f"Point {point_idx}: Models disagree by up to {max_dist:.1f} mm, {pct_over_2mm:.1f}% prediction pairs >2 mm apart"
             })
 
         if uncertainties['outlier_risk'] > 0.5:
@@ -447,7 +447,7 @@ def fuse_predictions(
                     float(fused_y * pixel_spacing)
                 ],
                 'description': (
-                    f"Point {point_idx}: Potential outlier {max_dist:.1f}mm from consensus"
+                    f"Point {point_idx}: Potential outlier {max_dist:.1f} mm from consensus"
                 )
             })
 
