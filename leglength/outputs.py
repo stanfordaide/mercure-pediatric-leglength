@@ -244,6 +244,8 @@ class DicomProcessor:
             new_ds.Modality = 'SC'
             new_ds.ConversionType = 'WSD'  # Workstation
             new_ds.SeriesDescription = series_description or 'QA'
+            new_ds.InstanceCreationDate = dt.strftime('%Y%m%d')
+            new_ds.InstanceCreationTime = dt.strftime('%H%M%S')
             
             
             # Image-specific attributes for Secondary Capture
