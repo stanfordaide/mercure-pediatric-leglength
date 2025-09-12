@@ -6,7 +6,28 @@
             "femur_threshold": 0.2,
             "tibia_threshold": 0.2,
             "total_threshold": 1.0,
-            "confidence_threshold": 0.0
+            "confidence_threshold": 0.0,
+            "monitoring": {
+                "enabled": true,
+                "influxdb": {
+                    "url": "http://monitoring-host:8086",
+                    "token": "your-influx-token-here",
+                    "org": "medical-imaging",
+                    "bucket": "pediatric-leglength",
+                    "timeout": 5.0
+                },
+                "prometheus": {
+                    "gateway_url": "http://monitoring-host:9091",
+                    "job_name": "pediatric-leglength",
+                    "timeout": 5.0
+                },
+                "metrics": {
+                    "collection_interval": 10,
+                    "batch_size": 50,
+                    "include_system_metrics": true,
+                    "include_model_metrics": true
+                }
+            }
         }
     }
 }

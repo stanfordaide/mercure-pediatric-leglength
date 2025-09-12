@@ -58,6 +58,9 @@ def load_config(input_dir: Path, log: logging.Logger) -> dict:
                 if isinstance(config, dict) and "settings" in config:
                     config = config["settings"]
                     log.info(f"Final config after extraction: {json.dumps(config, indent=2)}")
+                
+                # Monitoring configuration is now part of settings - no special handling needed
+                # It will be included automatically with the settings
             else:
                 config = {}
                 log.warning("No 'process.settings' found in task.json")
@@ -316,6 +319,17 @@ def main():
     
     config = load_config(args.input_dir, logger)
     
+    # Initialize monitoring (optional)
+    try:
+        from monitoring import MonitorManager
+        monitor = MonitorManager(config, logger)
+    except ImportError:
+        logger.debug("Monitoring module not available")
+        monitor = None
+    except Exception as e:
+        logger.warning(f"Failed to initialize monitoring: {e}")
+        monitor = None
+    
     # Validate configuration
     validation_errors = validate_config(config, logger)
     if validation_errors:
@@ -344,27 +358,62 @@ def main():
     
     # Process each series
     for series_id, dicom_files in series.items():
-        # Select the file with the highest InstanceNumber in the series
-        if dicom_files:
-            best_path = None
-            best_inst = -1
-            for f in dicom_files:
-                try:
-                    ds = pydicom.dcmread(f, stop_before_pixels=True)
-                    inst = int(getattr(ds, "InstanceNumber", 0) or 0)
-                    if inst > best_inst:
-                        best_inst = inst
-                        best_path = Path(f)
-                except Exception as e:
-                    logger.debug(f"Could not read InstanceNumber from {f}: {e}")
-            if best_path is None:
-                dicom_path = Path(dicom_files[0])
-                logger.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
-            else:
-                dicom_path = best_path
-                logger.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
-            results = process_image2(dicom_path, args.output_dir, config, logger)
-            logger.info(f"Results: {results}")
+        # Start monitoring session
+        session_id = monitor.start_session(series_id, config) if monitor else ""
+        
+        try:
+            # Select the file with the highest InstanceNumber in the series
+            if dicom_files:
+                best_path = None
+                best_inst = -1
+                for f in dicom_files:
+                    try:
+                        ds = pydicom.dcmread(f, stop_before_pixels=True)
+                        inst = int(getattr(ds, "InstanceNumber", 0) or 0)
+                        if inst > best_inst:
+                            best_inst = inst
+                            best_path = Path(f)
+                    except Exception as e:
+                        logger.debug(f"Could not read InstanceNumber from {f}: {e}")
+                if best_path is None:
+                    dicom_path = Path(dicom_files[0])
+                    logger.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
+                else:
+                    dicom_path = best_path
+                    logger.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
+                
+                # Track processing time
+                start_time = time.time()
+                results = process_image2(dicom_path, args.output_dir, config, logger)
+                end_time = time.time()
+                
+                # Record metrics
+                if monitor:
+                    monitor.track_processing_time(session_id, "total_processing", start_time, end_time)
+                    
+                    # Record model performance metrics
+                    model_metrics = {
+                        'landmarks_detected': len(results.get('boxes', [])),
+                        'confidence_scores': results.get('scores', []),
+                        'measurements': results.get('measurements', {})
+                    }
+                    monitor.record_model_performance(session_id, config.get('models', ['unknown'])[0], model_metrics)
+                    
+                    # Record measurements
+                    if results.get('measurements'):
+                        monitor.record_measurements(session_id, results['measurements'])
+                
+                logger.info(f"Results: {results}")
+                
+                # Mark session as completed
+                if monitor:
+                    monitor.end_session(session_id, "completed")
+                    
+        except Exception as e:
+            logger.error(f"Error processing series {series_id}: {e}")
+            if monitor:
+                monitor.end_session(session_id, "failed")
+            raise
             
             
         
