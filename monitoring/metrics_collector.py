@@ -8,12 +8,19 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import psutil
 import os
+import calendar
 
 try:
     import torch
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
+
+try:
+    import pydicom
+    PYDICOM_AVAILABLE = True
+except ImportError:
+    PYDICOM_AVAILABLE = False
 
 
 class MetricsCollector:
@@ -40,6 +47,97 @@ class MetricsCollector:
         self.process = psutil.Process()
         
         self.logger.debug("Metrics collector initialized")
+    
+    def _extract_dicom_metadata(self, dicom_path: str) -> Dict[str, Any]:
+        """Extract metadata from DICOM file for tagging."""
+        metadata = {}
+        
+        if not PYDICOM_AVAILABLE:
+            return metadata
+            
+        try:
+            ds = pydicom.dcmread(dicom_path, stop_before_pixels=True)
+            
+            # Patient information
+            metadata['patient_id'] = getattr(ds, 'PatientID', 'unknown')
+            metadata['patient_gender'] = getattr(ds, 'PatientSex', 'unknown').upper()
+            
+            # Calculate age group from patient age
+            patient_age = getattr(ds, 'PatientAge', None)
+            if patient_age:
+                try:
+                    # PatientAge format: "025Y" or "030M" etc.
+                    age_value = int(patient_age[:3])
+                    age_unit = patient_age[3]
+                    
+                    if age_unit == 'Y':  # Years
+                        age_years = age_value
+                    elif age_unit == 'M':  # Months
+                        age_years = age_value / 12
+                    else:
+                        age_years = None
+                        
+                    if age_years is not None:
+                        metadata['patient_age'] = int(age_years)
+                        if age_years <= 2:
+                            metadata['patient_age_group'] = '0-2'
+                        elif age_years <= 8:
+                            metadata['patient_age_group'] = '2-8'
+                        elif age_years <= 18:
+                            metadata['patient_age_group'] = '8-18'
+                        else:
+                            metadata['patient_age_group'] = '18+'
+                    else:
+                        metadata['patient_age_group'] = 'unknown'
+                        
+                except (ValueError, IndexError):
+                    metadata['patient_age_group'] = 'unknown'
+            else:
+                metadata['patient_age_group'] = 'unknown'
+            
+            # Study and series information
+            metadata['study_id'] = getattr(ds, 'StudyInstanceUID', 'unknown')
+            metadata['series_id'] = getattr(ds, 'SeriesInstanceUID', 'unknown')
+            metadata['accession_number'] = getattr(ds, 'AccessionNumber', 'unknown')
+            
+            # Scanner information
+            metadata['scanner_manufacturer'] = getattr(ds, 'Manufacturer', 'unknown')
+            metadata['pixel_spacing'] = float(getattr(ds, 'PixelSpacing', [0.0, 0.0])[0])
+            
+        except Exception as e:
+            self.logger.debug(f"Failed to extract DICOM metadata: {e}")
+            
+        return metadata
+    
+    def _get_temporal_tags(self, timestamp: float) -> Dict[str, str]:
+        """Generate temporal tags from timestamp."""
+        dt = datetime.fromtimestamp(timestamp)
+        
+        # Time of day
+        hour = dt.hour
+        if 6 <= hour < 12:
+            time_of_day = 'morning'
+        elif 12 <= hour < 18:
+            time_of_day = 'afternoon'
+        elif 18 <= hour < 24:
+            time_of_day = 'evening'
+        else:
+            time_of_day = 'night'
+        
+        # Day type
+        day_type = 'weekend' if dt.weekday() >= 5 else 'weekday'
+        
+        # Week of month (1-based)
+        week_of_month = f"week{((dt.day - 1) // 7) + 1}"
+        
+        return {
+            'time_of_day': time_of_day,
+            'day_of_week': dt.strftime('%A').lower(),
+            'week_of_month': week_of_month,
+            'month': dt.strftime('%B').lower(),
+            'year': str(dt.year),
+            'day_type': day_type
+        }
     
     def start_session(self, session_id: str, config: Dict[str, Any]) -> None:
         """
@@ -106,19 +204,43 @@ class MetricsCollector:
         
         self.logger.debug(f"Recorded model metrics for {model_name}")
     
-    def record_measurements(self, session_id: str, measurements: Dict[str, Any]) -> None:
+    def record_measurements(self, session_id: str, measurements: Dict[str, Any], 
+                           dicom_path: str = None) -> None:
         """
-        Record measurement results.
+        Record measurement results with DICOM metadata.
         
         Args:
             session_id: Session identifier
             measurements: Dictionary of measurements
+            dicom_path: Path to DICOM file for metadata extraction
         """
         if session_id not in self.sessions:
             return
         
         self.sessions[session_id]['measurements'] = measurements
+        if dicom_path:
+            self.sessions[session_id]['dicom_path'] = dicom_path
+            
         self.logger.debug(f"Recorded {len(measurements)} measurements")
+    
+    def record_performance_data(self, session_id: str, performance_data: Dict[str, Any],
+                               dicom_path: str = None) -> None:
+        """
+        Record AI performance data (uncertainties, point statistics).
+        
+        Args:
+            session_id: Session identifier
+            performance_data: Dictionary containing uncertainties and point statistics
+            dicom_path: Path to DICOM file for metadata extraction
+        """
+        if session_id not in self.sessions:
+            return
+            
+        self.sessions[session_id]['performance_data'] = performance_data
+        if dicom_path:
+            self.sessions[session_id]['dicom_path'] = dicom_path
+            
+        self.logger.debug(f"Recorded performance data with {len(performance_data.get('uncertainties', {}))} points")
     
     def record_custom_metric(self, session_id: str, name: str, value: Any, 
                            tags: Optional[Dict[str, str]] = None) -> None:
@@ -208,7 +330,7 @@ class MetricsCollector:
     
     def get_influx_data(self, session_id: str) -> List[Dict[str, Any]]:
         """
-        Format session data for InfluxDB.
+        Format session data for InfluxDB using the new PLL schema.
         
         Args:
             session_id: Session identifier
@@ -223,95 +345,111 @@ class MetricsCollector:
         influx_data = []
         
         try:
-            # Base tags for all metrics
+            config = session.get('config', {})
+            dicom_path = session.get('dicom_path')
+            completion_time = time.time()
+            
+            # Extract DICOM metadata
+            dicom_metadata = {}
+            if dicom_path:
+                dicom_metadata = self._extract_dicom_metadata(dicom_path)
+            
+            # Get temporal tags
+            temporal_tags = self._get_temporal_tags(completion_time)
+            
+            # AI model version (from config)
+            ai_model_version = '_'.join(config.get('models', ['unknown']))
+            
+            # Base tags for all measurements
             base_tags = {
-                'session_id': session_id,
-                'series_id': session.get('config', {}).get('series_id', 'unknown'),
-                'instance': 'pediatric-leglength'
+                'patient_id': dicom_metadata.get('patient_id', 'unknown'),
+                'study_id': dicom_metadata.get('study_id', 'unknown'),
+                'series_id': dicom_metadata.get('series_id', 'unknown'),
+                'accession_number': dicom_metadata.get('accession_number', 'unknown'),
+                'patient_gender': dicom_metadata.get('patient_gender', 'unknown'),
+                'patient_age_group': dicom_metadata.get('patient_age_group', 'unknown'),
+                'scanner_manufacturer': dicom_metadata.get('scanner_manufacturer', 'unknown'),
+                'ai_model_version': ai_model_version,
+                **temporal_tags
             }
             
-            # Processing timing metrics
-            for stage, timing in session.get('timings', {}).items():
-                influx_data.append({
-                    'measurement': 'processing_duration',
-                    'tags': {**base_tags, 'stage': stage},
-                    'fields': {
-                        'duration_seconds': timing['duration']
-                    },
-                    'time': datetime.fromtimestamp(timing['timestamp'])
-                })
+            # Processing duration from timings
+            processing_duration_ms = 0
+            for timing in session.get('timings', {}).values():
+                processing_duration_ms += timing['duration'] * 1000  # Convert to ms
             
-            # Model performance metrics
-            for model_name, model_data in session.get('model_metrics', {}).items():
-                metrics = model_data['metrics']
-                
-                # Confidence scores
-                if 'confidence_scores' in metrics:
-                    scores = metrics['confidence_scores']
-                    if scores:
-                        avg_confidence = sum(scores) / len(scores)
-                        influx_data.append({
-                            'measurement': 'model_performance',
-                            'tags': {**base_tags, 'model': model_name},
-                            'fields': {
-                                'avg_confidence': avg_confidence,
-                                'min_confidence': min(scores),
-                                'max_confidence': max(scores),
-                                'confidence_count': len(scores)
-                            },
-                            'time': datetime.fromtimestamp(model_data['timestamp'])
-                        })
-                
-                # Landmark detection
-                if 'landmarks_detected' in metrics:
-                    influx_data.append({
-                        'measurement': 'landmark_detection',
-                        'tags': {**base_tags, 'model': model_name},
-                        'fields': {
-                            'landmarks_count': metrics['landmarks_detected']
-                        },
-                        'time': datetime.fromtimestamp(model_data['timestamp'])
-                    })
-            
-            # Measurement metrics
+            # PLL AI Measurements
             measurements = session.get('measurements', {})
             if measurements:
-                for name, value in measurements.items():
-                    if isinstance(value, (int, float)):
+                for measurement_name, measurement_data in measurements.items():
+                    if isinstance(measurement_data, dict) and 'millimeters' in measurement_data:
+                        # Extract measurement confidence and uncertainty from performance data
+                        performance_data = session.get('performance_data', {})
+                        measurement_confidence = 0.0
+                        measurement_uncertainty_mm = 0.0
+                        
+                        # Calculate average confidence from uncertainties if available
+                        uncertainties = performance_data.get('uncertainties', {})
+                        if uncertainties:
+                            confidences = [u.get('confidence_mean', 0) for u in uncertainties.values()]
+                            if confidences:
+                                measurement_confidence = sum(confidences) / len(confidences)
+                            
+                            # Calculate average spatial uncertainty
+                            spatial_uncertainties = [u.get('spatial_uncertainty_mm', 0) for u in uncertainties.values()]
+                            if spatial_uncertainties:
+                                measurement_uncertainty_mm = sum(spatial_uncertainties) / len(spatial_uncertainties)
+                        
                         influx_data.append({
-                            'measurement': 'leg_measurements',
-                            'tags': {**base_tags, 'measurement_name': name},
-                            'fields': {
-                                'value_mm': value
+                            'measurement': 'pll_ai_measurements',
+                            'tags': {
+                                **base_tags,
+                                'measurement_type': measurement_name
                             },
-                            'time': datetime.fromtimestamp(session['start_time'])
+                            'fields': {
+                                'patient_age': dicom_metadata.get('patient_age', 0),
+                                'measurement_value_mm': float(measurement_data['millimeters']),
+                                'processing_duration_ms': int(processing_duration_ms),
+                                'measurement_confidence': float(measurement_confidence),
+                                'measurement_uncertainty_mm': float(measurement_uncertainty_mm),
+                                'pixel_spacing': float(dicom_metadata.get('pixel_spacing', 0.0))
+                            },
+                            'time': datetime.fromtimestamp(completion_time)
                         })
             
-            # System metrics
-            for sys_metric in session.get('system_metrics', []):
-                influx_data.append({
-                    'measurement': 'system_resources',
-                    'tags': base_tags,
-                    'fields': {
-                        k: v for k, v in sys_metric.items() 
-                        if k != 'timestamp' and isinstance(v, (int, float))
-                    },
-                    'time': datetime.fromtimestamp(sys_metric['timestamp'])
-                })
+            # PLL AI Performance (per point)
+            performance_data = session.get('performance_data', {})
+            uncertainties = performance_data.get('uncertainties', {})
             
-            # Custom metrics
-            for custom in session.get('custom_metrics', []):
+            for point_id, uncertainty_data in uncertainties.items():
                 influx_data.append({
-                    'measurement': 'custom_metrics',
-                    'tags': {**base_tags, **custom.get('tags', {}), 'metric_name': custom['name']},
-                    'fields': {
-                        'value': custom['value']
+                    'measurement': 'pll_ai_performance',
+                    'tags': {
+                        **base_tags,
+                        'point_id': str(point_id)
                     },
-                    'time': datetime.fromtimestamp(custom['timestamp'])
+                    'fields': {
+                        'weighted_x_mm': float(uncertainty_data.get('weighted_x_mm', 0)),
+                        'weighted_y_mm': float(uncertainty_data.get('weighted_y_mm', 0)),
+                        'detection_disagreement': float(uncertainty_data.get('detection_disagreement', 0)),
+                        'total_models': int(uncertainty_data.get('total_models', 0)),
+                        'localization_disagreement': float(uncertainty_data.get('localization_disagreement', 0)),
+                        'outlier_risk': float(uncertainty_data.get('outlier_risk', 0)),
+                        'spatial_uncertainty_mm': float(uncertainty_data.get('spatial_uncertainty_mm', 0)),
+                        'confidence_mean': float(uncertainty_data.get('confidence_mean', 0)),
+                        'confidence_std': float(uncertainty_data.get('confidence_std', 0)),
+                        'confidence_uncertainty': float(uncertainty_data.get('confidence_uncertainty', 0)),
+                        'num_models': int(uncertainty_data.get('num_models', 0)),
+                        'position_std_x_mm': float(uncertainty_data.get('position_std_x_mm', 0)),
+                        'position_std_y_mm': float(uncertainty_data.get('position_std_y_mm', 0))
+                    },
+                    'time': datetime.fromtimestamp(completion_time)
                 })
             
         except Exception as e:
             self.logger.warning(f"Failed to format InfluxDB data: {e}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
         
         return influx_data
     
