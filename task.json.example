@@ -1,12 +1,34 @@
 {
     "process": {
         "settings": {
-            "models": ["resnet101", "vit_l_16", "resnext101_32x8d"],
+            "models": ["resnet101", "vit_l_16"],
             "series_offset": 1000,
             "femur_threshold": 0.2,
             "tibia_threshold": 0.2,
             "total_threshold": 1.0,
-            "confidence_threshold": 0.0
+            "confidence_threshold": 0.0,
+            "monitoring": {
+                "enabled": true,
+                "influxdb": {
+                    "url": "http://localhost:8086",
+                    "token": "ai-inference-token-12345",
+                    "org": "mercure-ai",
+                    "bucket": "ai-inference-spc",
+                    "timeout": 5.0
+                },
+                "prometheus": {
+                    "gateway_url": "http://localhost:9091",
+                    "job_name": "pediatric-leglength",
+                    "instance": "pediatric-leglength-module",
+                    "timeout": 5.0
+                },
+                "metrics": {
+                    "collection_interval": 10,
+                    "batch_size": 50,
+                    "include_system_metrics": true,
+                    "include_model_metrics": true
+                }
+            }
         }
     }
 }

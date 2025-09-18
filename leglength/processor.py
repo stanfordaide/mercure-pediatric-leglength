@@ -7,6 +7,13 @@ from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
+"""Image processing helpers with logging.
+
+This module is responsible for preparing DICOM images for model inference.
+We add consistent debug logs at key steps to aid troubleshooting and
+observability.
+"""
+
 class ImageProcessor:
     def __init__(self, target_size=512):
         self.target_size = target_size
@@ -20,19 +27,23 @@ class ImageProcessor:
     def load_dicom(self, dicom_path: str) -> np.ndarray:
         """Load DICOM image and set metadata."""
         self.dicom = pydicom.dcmread(dicom_path)
+        self.logger.debug(f"Loaded DICOM: {dicom_path}, shape={self.dicom.pixel_array.shape}")
         image = self.dicom.pixel_array
         self.original_height, self.original_width = image.shape
         self.pixel_spacing = self.dicom.PixelSpacing
+        self.logger.debug(f"Pixel spacing: {self.pixel_spacing}, original size: {self.original_height}x{self.original_width}")
         return image
 
     def preprocess_image(self, dicom_path: str) -> torch.Tensor:
         """Preprocess DICOM image for model input."""
         image = self.load_dicom(dicom_path)
+        self.logger.debug("Starting image preprocessing")
         image, (pad_h, pad_w) = self.adaptive_pad(image)
         image = self.enhance_contrast(image)
         image = torch.from_numpy(image).float()
         image = self.clip_and_stretch(image)
         image = image.repeat(3, 1, 1)
+        self.logger.debug("Finished image preprocessing")
         return image
 
     def adaptive_pad(self, image: np.ndarray) -> Tuple[np.ndarray, Tuple[int, int]]:
