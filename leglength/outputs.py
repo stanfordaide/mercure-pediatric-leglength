@@ -465,7 +465,7 @@ class DicomProcessor:
 
         # Add difference measurements if both sides are available
         if all(k in results['measurements'] for k in ['PLL_R_FEM', 'PLL_L_FEM']):
-            fem_diff = abs(results['measurements']['PLL_R_FEM']['centimeters'] - 
+            fem_diff = (results['measurements']['PLL_R_FEM']['centimeters'] - 
                          results['measurements']['PLL_L_FEM']['centimeters'])
             
             # Femur difference value
@@ -479,25 +479,25 @@ class DicomProcessor:
             diff_item.TextValue = f"{round(fem_diff,2)} cm"
             content_seq.append(diff_item)
 
-            # Femur discrepancy description
-            desc_item = Dataset()
-            desc_item.RelationshipType = 'HAS PROPERTIES'
-            desc_item.ValueType = 'TEXT'
-            desc_item.ConceptNameCodeSequence = [Dataset()]
-            desc_item.ConceptNameCodeSequence[0].CodeValue = "99_FEM_DIFF_DESC"
-            desc_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            desc_item.ConceptNameCodeSequence[0].CodeMeaning = "Femur Length Discrepancy"
-            if fem_diff > femur_threshold:
-                if results['measurements']['PLL_R_FEM']['centimeters'] > results['measurements']['PLL_L_FEM']['centimeters']:
-                    desc_item.TextValue = "The right femur is longer"
-                else:
-                    desc_item.TextValue = "The left femur is longer"
-            else:
-                desc_item.TextValue = "There is no femoral length discrepancy"
-            content_seq.append(desc_item)
+            # # Femur discrepancy description
+            # desc_item = Dataset()
+            # desc_item.RelationshipType = 'HAS PROPERTIES'
+            # desc_item.ValueType = 'TEXT'
+            # desc_item.ConceptNameCodeSequence = [Dataset()]
+            # desc_item.ConceptNameCodeSequence[0].CodeValue = "99_FEM_DIFF_DESC"
+            # desc_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            # desc_item.ConceptNameCodeSequence[0].CodeMeaning = "Femur Length Discrepancy"
+            # if fem_diff > femur_threshold:
+            #     if results['measurements']['PLL_R_FEM']['centimeters'] > results['measurements']['PLL_L_FEM']['centimeters']:
+            #         desc_item.TextValue = "The right femur is longer"
+            #     else:
+            #         desc_item.TextValue = "The left femur is longer"
+            # else:
+            #     desc_item.TextValue = "There is no femoral length discrepancy"
+            # content_seq.append(desc_item)
 
         if all(k in results['measurements'] for k in ['PLL_R_TIB', 'PLL_L_TIB']):
-            tib_diff = abs(results['measurements']['PLL_R_TIB']['centimeters'] - 
+            tib_diff = (results['measurements']['PLL_R_TIB']['centimeters'] - 
                          results['measurements']['PLL_L_TIB']['centimeters'])
             
             # Tibia difference value
@@ -511,25 +511,25 @@ class DicomProcessor:
             diff_item.TextValue = f"{round(tib_diff,2)} cm"
             content_seq.append(diff_item)
 
-            # Tibia discrepancy description
-            desc_item = Dataset()
-            desc_item.RelationshipType = 'HAS PROPERTIES'
-            desc_item.ValueType = 'TEXT'
-            desc_item.ConceptNameCodeSequence = [Dataset()]
-            desc_item.ConceptNameCodeSequence[0].CodeValue = "99_TIB_DIFF_DESC"
-            desc_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            desc_item.ConceptNameCodeSequence[0].CodeMeaning = "Tibia Length Discrepancy"
-            if tib_diff > tibia_threshold:
-                if results['measurements']['PLL_R_TIB']['centimeters'] > results['measurements']['PLL_L_TIB']['centimeters']:
-                    desc_item.TextValue = "The right tibia is longer"
-                else:
-                    desc_item.TextValue = "The left tibia is longer"
-            else:
-                desc_item.TextValue = "There is no tibial length discrepancy"
-            content_seq.append(desc_item)
+            # # Tibia discrepancy description
+            # desc_item = Dataset()
+            # desc_item.RelationshipType = 'HAS PROPERTIES'
+            # desc_item.ValueType = 'TEXT'
+            # desc_item.ConceptNameCodeSequence = [Dataset()]
+            # desc_item.ConceptNameCodeSequence[0].CodeValue = "99_TIB_DIFF_DESC"
+            # desc_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            # desc_item.ConceptNameCodeSequence[0].CodeMeaning = "Tibia Length Discrepancy"
+            # if tib_diff > tibia_threshold:
+            #     if results['measurements']['PLL_R_TIB']['centimeters'] > results['measurements']['PLL_L_TIB']['centimeters']:
+            #         desc_item.TextValue = "The right tibia is longer"
+            #     else:
+            #         desc_item.TextValue = "The left tibia is longer"
+            # else:
+            #     desc_item.TextValue = "There is no tibial length discrepancy"
+            # content_seq.append(desc_item)
 
         if all(k in results['measurements'] for k in ['PLL_R_LGL', 'PLL_L_LGL']):
-            total_diff = abs(results['measurements']['PLL_R_LGL']['centimeters'] - 
+            total_diff = (results['measurements']['PLL_R_LGL']['centimeters'] - 
                            results['measurements']['PLL_L_LGL']['centimeters'])
             
             # Total difference value
@@ -543,22 +543,22 @@ class DicomProcessor:
             diff_item.TextValue = f"{round(total_diff,2)} cm"
             content_seq.append(diff_item)
 
-            # Total discrepancy description
-            desc_item = Dataset()
-            desc_item.RelationshipType = 'HAS PROPERTIES'
-            desc_item.ValueType = 'TEXT'
-            desc_item.ConceptNameCodeSequence = [Dataset()]
-            desc_item.ConceptNameCodeSequence[0].CodeValue = "99_TOT_DIFF_DESC"
-            desc_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-            desc_item.ConceptNameCodeSequence[0].CodeMeaning = "Total Lower Extremity Length Discrepancy"
-            if total_diff > total_threshold:
-                if results['measurements']['PLL_R_LGL']['centimeters'] > results['measurements']['PLL_L_LGL']['centimeters']:
-                    desc_item.TextValue = "The right leg is longer"
-                else:
-                    desc_item.TextValue = "The left leg is longer"
-            else:
-                desc_item.TextValue = "There is no leg length discrepancy."
-            content_seq.append(desc_item)
+            # # Total discrepancy description
+            # desc_item = Dataset()
+            # desc_item.RelationshipType = 'HAS PROPERTIES'
+            # desc_item.ValueType = 'TEXT'
+            # desc_item.ConceptNameCodeSequence = [Dataset()]
+            # desc_item.ConceptNameCodeSequence[0].CodeValue = "99_TOT_DIFF_DESC"
+            # desc_item.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+            # desc_item.ConceptNameCodeSequence[0].CodeMeaning = "Total Lower Extremity Length Discrepancy"
+            # if total_diff > total_threshold:
+            #     if results['measurements']['PLL_R_LGL']['centimeters'] > results['measurements']['PLL_L_LGL']['centimeters']:
+            #         desc_item.TextValue = "The right leg is longer"
+            #     else:
+            #         desc_item.TextValue = "The left leg is longer"
+            # else:
+            #     desc_item.TextValue = "There is no leg length discrepancy."
+            # content_seq.append(desc_item)
 
         return content_seq
 
@@ -660,19 +660,19 @@ class DicomProcessor:
         # Add measurements
         content_seq = self._create_measurements_container(content_seq, results, femur_threshold=config['femur_threshold'], tibia_threshold=config['tibia_threshold'], total_threshold=config['total_threshold'])
         
-        # # Add a separator item
-        # separator = Dataset()
-        # separator.RelationshipType = 'CONTAINS'
-        # separator.ValueType = 'TEXT'
-        # separator.ConceptNameCodeSequence = [Dataset()]
-        # separator.ConceptNameCodeSequence[0].CodeValue = "99_SEPARATOR"
-        # separator.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
-        # separator.ConceptNameCodeSequence[0].CodeMeaning = "Measurement Issues"
-        # separator.TextValue = "Measurement Issues"
-        # content_seq.append(separator)
+        # # # Add a separator item
+        # # separator = Dataset()
+        # # separator.RelationshipType = 'CONTAINS'
+        # # separator.ValueType = 'TEXT'
+        # # separator.ConceptNameCodeSequence = [Dataset()]
+        # # separator.ConceptNameCodeSequence[0].CodeValue = "99_SEPARATOR"
+        # # separator.ConceptNameCodeSequence[0].CodingSchemeDesignator = self.codes.CODING_SCHEME
+        # # separator.ConceptNameCodeSequence[0].CodeMeaning = "Measurement Issues"
+        # # separator.TextValue = "Measurement Issues"
+        # # content_seq.append(separator)
         
-        # Add issues
-        content_seq = self._create_issues_container(content_seq, results)
+        # # Add issues
+        # content_seq = self._create_issues_container(content_seq, results)
         
         # Set the content sequence
         container.ContentSequence = content_seq

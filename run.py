@@ -49,11 +49,11 @@ def load_config(input_dir: Path, log: logging.Logger) -> dict:
                 task = json.load(f)
             
             # Extract settings from task file (if present)
-            log.info(f"Task file content: {json.dumps(task, indent=2)}")
+            # log.info(f"Task file content: {json.dumps(task, indent=2)}")
             if "process" in task and task["process"]:
                 config = task["process"].get("settings", {})
                 log.info(f"Loaded configuration from {task_file}")
-                log.info(f"Extracted config: {json.dumps(config, indent=2)}")
+                # log.info(f"Extracted config: {json.dumps(config, indent=2)}")
                 # Ensure we have the actual settings, not nested structure
                 if isinstance(config, dict) and "settings" in config:
                     config = config["settings"]
@@ -360,6 +360,8 @@ def main():
             series[series_id].append(entry.path)
     
     
+    logger.info(f"Series: {series}")
+    
     
     # Process each series
     for series_id, dicom_files in series.items():
@@ -439,7 +441,7 @@ def main():
                         str(dicom_path)
                     )
                 
-                logger.info(f"Results: {results}")
+                logger.info(f"Results: {json.dumps(results, indent=2)}")
                 
                 # Mark session as completed
                 if monitor:
