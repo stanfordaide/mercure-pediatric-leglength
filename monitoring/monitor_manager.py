@@ -295,6 +295,12 @@ class MonitorManager:
             if self.metrics_collector and hasattr(self.metrics_collector, 'record_performance_data'):
                 self.metrics_collector.record_performance_data(session_id, performance_data, dicom_path)
             
+            # Record image-level metrics in Prometheus if available
+            if self.prometheus_client and 'image_metrics' in performance_data:
+                image_metrics = performance_data['image_metrics']
+                if image_metrics:
+                    self.prometheus_client.record_image_metrics(session_id, image_metrics)
+            
             self.logger.debug(f"Recorded performance data with {len(performance_data.get('uncertainties', {}))} points")
             
         except Exception as e:

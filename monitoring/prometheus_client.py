@@ -117,6 +117,35 @@ class PrometheusClient:
                 registry=self.registry
             )
             
+            # Image-level disagreement metrics
+            self.image_dds = Gauge(
+                'image_detection_disagreement_score',
+                'Image-level Detection Disagreement Score',
+                ['series_id', 'model'],
+                registry=self.registry
+            )
+            
+            self.image_lds = Gauge(
+                'image_localization_disagreement_score',
+                'Image-level Localization Disagreement Score',
+                ['series_id', 'model'],
+                registry=self.registry
+            )
+            
+            self.image_ors = Gauge(
+                'image_outlier_risk_score',
+                'Image-level Outlier Risk Score',
+                ['series_id', 'model'],
+                registry=self.registry
+            )
+            
+            self.image_cds = Gauge(
+                'image_composite_disagreement_score',
+                'Image-level Composite Disagreement Score',
+                ['series_id', 'model'],
+                registry=self.registry
+            )
+            
             self.logger.debug("Prometheus metrics initialized")
             
         except Exception as e:
@@ -224,6 +253,43 @@ class PrometheusClient:
             
         except Exception as e:
             self.logger.debug(f"Failed to record measurements: {e}")
+    
+    def record_image_metrics(self, series_id: str, image_metrics: Dict[str, float], 
+                           model: str = "ensemble") -> None:
+        """Record image-level disagreement metrics."""
+        if not self.connected:
+            return
+        
+        try:
+            # Record each image-level metric
+            if 'image_dds' in image_metrics:
+                self.image_dds.labels(
+                    series_id=series_id,
+                    model=model
+                ).set(image_metrics['image_dds'])
+            
+            if 'image_lds' in image_metrics:
+                self.image_lds.labels(
+                    series_id=series_id,
+                    model=model
+                ).set(image_metrics['image_lds'])
+            
+            if 'image_ors' in image_metrics:
+                self.image_ors.labels(
+                    series_id=series_id,
+                    model=model
+                ).set(image_metrics['image_ors'])
+            
+            if 'image_cds' in image_metrics:
+                self.image_cds.labels(
+                    series_id=series_id,
+                    model=model
+                ).set(image_metrics['image_cds'])
+            
+            self.logger.debug(f"Recorded image metrics for series {series_id}")
+            
+        except Exception as e:
+            self.logger.debug(f"Failed to record image metrics: {e}")
     
     def push_metrics(self) -> bool:
         """

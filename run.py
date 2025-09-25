@@ -8,6 +8,7 @@ import logging
 import sys
 from pathlib import Path
 import shutil
+import numpy as np
 from pydicom.uid import generate_uid
 import pydicom
 import tempfile
@@ -150,7 +151,17 @@ def process_image(dicom_path: Path, output_dir: Path, config: dict, logger: logg
     qa_dicom.is_little_endian = True
     qa_dicom.save_as(str(output_dir / 'qa_output.dcm'), write_like_original=False)
     
+    # Create QA Table DICOM with combined visualization and tables
+    models = config.get('models', [])
+    qa_table_dicom = output_processor.get_qa_table_dicom(results, str(dicom_path), models)
+    qa_table_dicom.is_implicit_VR = False
+    qa_table_dicom.is_little_endian = True
+    qa_table_dicom.save_as(str(output_dir / 'qa_table_output.dcm'), write_like_original=False)
     
+    # Save QA table as JPEG as well
+    qa_table_image = output_processor._create_combined_qa_table_image(results, str(dicom_path), models)
+    import cv2
+    cv2.imwrite(str(output_dir / 'qa_table_output.jpg'), qa_table_image)
     
     # Create SR DICOM
     sr_dicom = output_processor.get_sr_dicom(results, str(dicom_path), config)
@@ -381,28 +392,55 @@ def main():
         session_id = monitor.start_session(monitoring_id, monitoring_config) if monitor else ""
         
         try:
-            # Select the file with the highest InstanceNumber in the series
+            # # COMMENTED OUT: Original implementation - Select the file with the highest InstanceNumber in the series
+            # if dicom_files:
+            #     best_path = None
+            #     best_inst = -1
+            #     for f in dicom_files:
+            #         try:
+            #             ds = pydicom.dcmread(f, stop_before_pixels=True)
+            #             inst = int(getattr(ds, "InstanceNumber", 0) or 0)
+            #             if inst > best_inst:
+            #                 best_inst = inst
+            #                 best_path = Path(f)
+            #         except Exception as e:
+            #             logger.debug(f"Could not read InstanceNumber from {f}: {e}")
+            #     if best_path is None:
+            #         dicom_path = Path(dicom_files[0])
+            #         logger.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
+            #     else:
+            #         dicom_path = best_path
+            #         if accession_number:
+            #             logger.info(f"Processing accession {accession_number} (series {series_id}): {dicom_path.name} (highest InstanceNumber={best_inst})")
+            #         else:
+            #             logger.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
+            
+            # NEW IMPLEMENTATION: Select the file with the highest matrix size (image dimensions)
             if dicom_files:
                 best_path = None
-                best_inst = -1
+                best_matrix_size = 0
+                best_dimensions = (0, 0)
                 for f in dicom_files:
                     try:
                         ds = pydicom.dcmread(f, stop_before_pixels=True)
-                        inst = int(getattr(ds, "InstanceNumber", 0) or 0)
-                        if inst > best_inst:
-                            best_inst = inst
+                        rows = int(getattr(ds, "Rows", 0) or 0)
+                        columns = int(getattr(ds, "Columns", 0) or 0)
+                        matrix_size = rows * columns
+                        if matrix_size > best_matrix_size:
+                            best_matrix_size = matrix_size
+                            best_dimensions = (rows, columns)
                             best_path = Path(f)
                     except Exception as e:
-                        logger.debug(f"Could not read InstanceNumber from {f}: {e}")
+                        logger.debug(f"Could not read matrix dimensions from {f}: {e}")
                 if best_path is None:
                     dicom_path = Path(dicom_files[0])
-                    logger.warning(f"No valid InstanceNumber found; falling back to first file in series: {dicom_path.name}")
+                    logger.warning(f"No valid matrix dimensions found; falling back to first file in series: {dicom_path.name}")
                 else:
                     dicom_path = best_path
                     if accession_number:
-                        logger.info(f"Processing accession {accession_number} (series {series_id}): {dicom_path.name} (highest InstanceNumber={best_inst})")
+                        logger.info(f"Processing accession {accession_number} (series {series_id}): {dicom_path.name} (highest matrix size={best_matrix_size}, dimensions={best_dimensions[0]}x{best_dimensions[1]})")
                     else:
-                        logger.info(f"Processing series {series_id}: {dicom_path.name} (highest InstanceNumber={best_inst})")
+                        logger.info(f"Processing series {series_id}: {dicom_path.name} (highest matrix size={best_matrix_size}, dimensions={best_dimensions[0]}x{best_dimensions[1]})")
                 
                 # Track processing time
                 start_time = time.time()
@@ -429,11 +467,12 @@ def main():
                             str(dicom_path)
                         )
                     
-                    # Record performance data (uncertainties and point statistics)
+                    # Record performance data (uncertainties, point statistics, and image-level metrics)
                     performance_data = {
                         'uncertainties': results.get('uncertainties', {}),
                         'point_statistics': results.get('point_statistics', {}),
-                        'issues': results.get('issues', [])
+                        'issues': results.get('issues', []),
+                        'image_metrics': results.get('image_metrics', {})
                     }
                     monitor.record_performance_data(
                         session_id, 
@@ -441,7 +480,23 @@ def main():
                         str(dicom_path)
                     )
                 
-                logger.info(f"Results: {json.dumps(results, indent=2)}")
+                # Convert numpy arrays to lists for JSON serialization
+                def convert_numpy(obj):
+                    if isinstance(obj, np.ndarray):
+                        return obj.tolist()
+                    elif isinstance(obj, dict):
+                        return {k: convert_numpy(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [convert_numpy(item) for item in obj]
+                    else:
+                        return obj
+                
+                try:
+                    serializable_results = convert_numpy(results)
+                    logger.info(f"Results: {json.dumps(serializable_results, indent=2)}")
+                except Exception as e:
+                    logger.info(f"Results summary: {len(results.get('boxes', []))} boxes, {len(results.get('measurements', {}))} measurements, {len(results.get('issues', []))} issues")
+                    logger.debug(f"JSON serialization failed: {e}")
                 
                 # Mark session as completed
                 if monitor:

@@ -35,12 +35,12 @@ class LegMeasurements:
         self.measurement_issues = []
         self.pixel_spacing = None
         
-        # Define visualization colors (BGR format)
+        # Define professional medical imaging colors (BGR format)
         self.colors = {
-            'PLL_R_FEM': (255,31,223),  # Pink
-            'PLL_R_TIB': (255,31,223),  # Pink
-            'PLL_L_FEM': (255,31,223),  # Pink
-            'PLL_L_TIB': (255,31,223),  # Pink
+            'PLL_R_FEM': (255, 255, 0),  # Cyan for medical imaging
+            'PLL_R_TIB': (255, 255, 0),  # Cyan for medical imaging
+            'PLL_L_FEM': (255, 255, 0),  # Cyan for medical imaging
+            'PLL_L_TIB': (255, 255, 0),  # Cyan for medical imaging
         }
         
     def calculate_distances(self, predictions: Dict, dicom_path: str, logger: logging.Logger) -> Dict[str, Dict[str, float]]:
