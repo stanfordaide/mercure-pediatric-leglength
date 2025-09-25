@@ -7,6 +7,11 @@
             "tibia_threshold": 0.2,
             "total_threshold": 1.0,
             "confidence_threshold": 0.0,
+            "image_metrics": {
+                "distance_threshold": 4.0,
+                "threshold_bounds": [10.0, 50.0],
+                "composite_weights": [0.5, 0.35, 0.15]
+            },
             "monitoring": {
                 "enabled": true,
                 "influxdb": {

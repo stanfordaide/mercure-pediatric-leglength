@@ -70,6 +70,11 @@ COPY monitoring ${HOME_DIR}/monitoring
 COPY run.py ${HOME_DIR}/run.py
 COPY docker_entrypoint.sh ${HOME_DIR}/docker_entrypoint.sh
 
+# Create output directory with proper permissions for volume mounting
+RUN mkdir -p /output && \
+    chown mercureapp:mercureapp /output && \
+    chmod 755 /output
+
 # Set proper ownership and permissions
 RUN chown -R mercureapp:mercureapp ${HOME_DIR} && \
     chmod a+x ${HOME_DIR}/run.py && \

@@ -446,6 +446,23 @@ class MetricsCollector:
                     'time': datetime.fromtimestamp(completion_time)
                 })
             
+            # PLL AI Image-Level Metrics
+            image_metrics = performance_data.get('image_metrics', {})
+            if image_metrics:
+                influx_data.append({
+                    'measurement': 'pll_ai_image_metrics',
+                    'tags': base_tags,
+                    'fields': {
+                        'image_dds': float(image_metrics.get('image_dds', 0.0)),
+                        'image_lds': float(image_metrics.get('image_lds', 0.0)),
+                        'image_ors': float(image_metrics.get('image_ors', 0.0)),
+                        'image_cds': float(image_metrics.get('image_cds', 0.0)),
+                        'processing_duration_ms': int(processing_duration_ms),
+                        'total_landmarks': len(uncertainties)
+                    },
+                    'time': datetime.fromtimestamp(completion_time)
+                })
+            
         except Exception as e:
             self.logger.warning(f"Failed to format InfluxDB data: {e}")
             import traceback

@@ -32,10 +32,14 @@ def inference_handler(
 
     # Read DICOM metadata
     dicom = pydicom.dcmread(dicom_path, stop_before_pixels=True)
-    pixel_spacing = float(dicom.PixelSpacing[0])
+    pixel_spacing = float(dicom.PixelSpacing[0]) if hasattr(dicom, 'PixelSpacing') else None
+    
+    if pixel_spacing is None:
+        logger.error(f"No PixelSpacing found in DICOM file: {dicom_path}")
+        raise ValueError("PixelSpacing is required for distance calculations")
 
     dicom_metadata = {
-        'pixel_spacing': float(dicom.PixelSpacing[0]) if hasattr(dicom, 'PixelSpacing') else None,
+        'pixel_spacing': pixel_spacing,
         'accession_number': getattr(dicom, 'AccessionNumber', None),
         'patient_id': getattr(dicom, 'PatientID', None),
         'study_instance_uid': getattr(dicom, 'StudyInstanceUID', None),
@@ -66,6 +70,7 @@ def inference_handler(
             model_predictions,
             dicom_path,
             pixel_spacing,
+            config,
             logger=logger
         )
 
@@ -175,11 +180,87 @@ def infer(
         raise
 
 
+def calculate_image_level_metrics(
+    uncertainties: Dict,
+    config: dict,
+    total_models: int
+) -> Dict:
+    """
+    Calculate image-level disagreement metrics.
+    
+    Args:
+        uncertainties: Point-level uncertainty metrics
+        config: Configuration containing thresholds and weights
+        total_models: Total number of models in ensemble
+        
+    Returns:
+        Dictionary containing image-level metrics
+    """
+    if not uncertainties:
+        return {
+            'image_dds': 0.0,
+            'image_lds': 0.0, 
+            'image_ors': 0.0,
+            'image_cds': 0.0
+        }
+    
+    # Get configuration parameters with defaults
+    distance_threshold = config.get('image_metrics', {}).get('distance_threshold', 2.0)
+    outlier_bounds = config.get('image_metrics', {}).get('threshold_bounds', [10.0, 50.0])
+    weights = config.get('image_metrics', {}).get('composite_weights', [0.5, 0.35, 0.15])
+    
+    # Calculate image-level Detection Disagreement Score (DDS)
+    detection_disagreements = [u.get('detection_disagreement', 0) for u in uncertainties.values()]
+    image_dds = np.mean(detection_disagreements) if detection_disagreements else 0.0
+    
+    # Calculate image-level Localization Disagreement Score (LDS)
+    # LDS should be based on pairwise distances between model predictions
+    localization_disagreements = []
+    for uncertainty in uncertainties.values():
+        # Use the localization_disagreement from point-level calculation
+        # This is already calculated as: sum(pairwise_distances > 2mm) / total_pairs
+        point_lds = uncertainty.get('localization_disagreement', 0)
+        localization_disagreements.append(point_lds)
+    
+    image_lds = np.mean(localization_disagreements) if localization_disagreements else 0.0
+    
+    # Calculate image-level Outlier Risk Score (ORS)
+    outlier_risks = []
+    for uncertainty in uncertainties.values():
+        spatial_uncertainty = uncertainty.get('spatial_uncertainty_mm', 0)
+        # Scale outlier risk based on threshold bounds
+        min_bound, max_bound = outlier_bounds
+        if spatial_uncertainty < min_bound:
+            risk = 0.0
+        elif spatial_uncertainty > max_bound:
+            risk = 1.0
+        else:
+            risk = (spatial_uncertainty - min_bound) / (max_bound - min_bound)
+        outlier_risks.append(risk)
+    
+    image_ors = np.mean(outlier_risks) if outlier_risks else 0.0
+    
+    # Calculate Composite Disagreement Score (CDS)
+    w_dds, w_ors, w_lds = weights
+    image_cds = w_dds * image_dds + w_ors * image_ors + w_lds * image_lds
+    
+    return {
+        'image_dds': float(image_dds),
+        'image_lds': float(image_lds),
+        'image_ors': float(image_ors), 
+        'image_cds': float(image_cds)
+    }
+
+
 def calculate_weighted_centroid(
     positions: List[Tuple[float, float]],
     confidences: List[float],
     pixel_spacing: float,
-    total_models: int
+    total_models: int,
+    distance_threshold: float = 2.0,
+    outlier_bounds: List[float] = [10.0, 50.0],
+    individual_model_boxes: List = None,
+    model_names: List[str] = None
 ) -> Tuple[float, float, Dict]:
     """
     Calculate confidence-weighted centroid and uncertainty metrics for point predictions.
@@ -211,14 +292,66 @@ def calculate_weighted_centroid(
     # Calculate disagreement scores
     detection_disagreement = (total_models - len(positions)) / total_models
 
-    distances = np.sqrt(
-        np.sum((positions - np.array([weighted_x, weighted_y]))**2, axis=1)
-    ) * pixel_spacing
-    localization_disagreement = np.sum(distances > 2) / len(distances)
+    # Calculate pairwise distances using individual model bboxes if available
+    pairwise_distances = []
+    
+    if individual_model_boxes and len(individual_model_boxes) > 1:
+        # Use actual model bounding box centroids
+        model_centroids = []
+        for bbox in individual_model_boxes:
+            if bbox is not None and len(bbox) >= 4:
+                centroid_x = (bbox[0] + bbox[2]) / 2
+                centroid_y = (bbox[1] + bbox[3]) / 2
+                model_centroids.append((centroid_x, centroid_y))
+        
+        # Calculate pairwise distances between model centroids
+        for i in range(len(model_centroids)):
+            for j in range(i+1, len(model_centroids)):
+                dist_pixels = np.sqrt((model_centroids[i][0] - model_centroids[j][0])**2 + 
+                                    (model_centroids[i][1] - model_centroids[j][1])**2)
+                dist_mm = dist_pixels * pixel_spacing
+                pairwise_distances.append(dist_mm)
+    else:
+        # Fallback to using positions (converted to mm)
+        positions_mm = np.array(positions) * pixel_spacing
+        for i in range(len(positions_mm)):
+            for j in range(i+1, len(positions_mm)):
+                dist = np.linalg.norm(positions_mm[i] - positions_mm[j])
+                pairwise_distances.append(dist)
+    
+    # Use the configurable distance threshold
+    localization_disagreement = (
+        np.sum(np.array(pairwise_distances) > distance_threshold) / len(pairwise_distances) 
+        if pairwise_distances else 0.0
+    )
 
-    # Calculate outlier risk
-    max_distance_mm = np.max(distances)
-    outlier_risk = 0 if max_distance_mm < 10 else min((max_distance_mm - 10) / 40, 1)
+    # Calculate outlier risk based on pairwise distances
+    if pairwise_distances:
+        outlier_threshold_min, outlier_threshold_max = outlier_bounds
+        
+        # Calculate risk based on how many pairs exceed thresholds
+        outlier_pairs_count = np.sum(np.array(pairwise_distances) > outlier_threshold_min)
+        total_pairs = len(pairwise_distances)
+        
+        if outlier_pairs_count == 0:
+            outlier_risk = 0.0
+        else:
+            # Base risk from proportion of outlier pairs
+            base_risk = outlier_pairs_count / total_pairs
+            
+            # Scale risk based on severity (how far beyond min threshold)
+            outlier_distances = [d for d in pairwise_distances if d > outlier_threshold_min]
+            max_outlier_distance = max(outlier_distances)
+            
+            if max_outlier_distance > outlier_threshold_max:
+                severity_multiplier = 1.0  # Maximum severity
+            else:
+                # Linear scaling between min and max thresholds
+                severity_multiplier = (max_outlier_distance - outlier_threshold_min) / (outlier_threshold_max - outlier_threshold_min)
+            
+            outlier_risk = min(base_risk * (1 + severity_multiplier), 1.0)
+    else:
+        outlier_risk = 0.0
 
     # Calculate uncertainty metrics
     std_x = np.sqrt(
@@ -259,6 +392,7 @@ def fuse_predictions(
     model_predictions: Dict,
     dicom_path: str,
     pixel_spacing: float,
+    config: dict,
     logger: logging.Logger
 ) -> Dict:
     """
@@ -315,7 +449,8 @@ def fuse_predictions(
         'labels': [],
         'uncertainties': {},
         'point_statistics': {},
-        'issues': []
+        'issues': [],
+        'individual_model_predictions': model_predictions  # Store individual model predictions
     }
 
     # Fuse predictions for each point
@@ -333,11 +468,35 @@ def fuse_predictions(
         point_data = point_predictions[point_idx]
 
         # Calculate fused position and uncertainties
+        distance_threshold = config.get('image_metrics', {}).get('distance_threshold', 2.0)
+        outlier_bounds = config.get('image_metrics', {}).get('threshold_bounds', [10.0, 50.0])
+        
+        # Get individual model bboxes for this point
+        individual_boxes = []
+        model_names_for_point = []
+        for model_name in point_data['models']:
+            # Find the bbox for this model and point
+            model_pred = model_predictions.get(model_name, {})
+            boxes = model_pred.get('predictions', {}).get('boxes', [])
+            labels = model_pred.get('predictions', {}).get('labels', [])
+            
+            # Find the box with matching label for this point
+            target_label = point_idx  # Assuming point_idx corresponds to label
+            for i, label in enumerate(labels):
+                if label == target_label and i < len(boxes):
+                    individual_boxes.append(boxes[i])
+                    model_names_for_point.append(model_name)
+                    break
+        
         fused_x, fused_y, uncertainties = calculate_weighted_centroid(
             point_data['positions'],
             point_data['confidences'],
             pixel_spacing,
-            len(model_predictions)
+            len(model_predictions),
+            distance_threshold,
+            outlier_bounds,
+            individual_boxes,
+            model_names_for_point
         )
 
         if fused_x is None or fused_y is None:
@@ -451,8 +610,23 @@ def fuse_predictions(
                 )
             })
 
+    # Calculate image-level metrics
+    image_metrics = calculate_image_level_metrics(
+        fused_results.get('uncertainties', {}),
+        config,
+        len(models)
+    )
+    fused_results['image_metrics'] = image_metrics
+    fused_results['config_used'] = {
+        'distance_threshold': config.get('image_metrics', {}).get('distance_threshold', 4.0),
+        'threshold_bounds': config.get('image_metrics', {}).get('threshold_bounds', [10.0, 50.0])
+    }
+    
     logger.info(
         f"Fused {len(fused_results['boxes'])} points with "
         f"{len(fused_results['issues'])} issues"
     )
+    logger.info(f"Image-level metrics: DDS={image_metrics['image_dds']:.3f}, "
+                f"LDS={image_metrics['image_lds']:.3f}, ORS={image_metrics['image_ors']:.3f}, "
+                f"CDS={image_metrics['image_cds']:.3f}")
     return fused_results
