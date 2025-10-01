@@ -1,7 +1,7 @@
 {
     "process": {
         "settings": {
-            "models": ["resnet101", "vit_l_16"],
+            "models": ["resnet101", "vit_l_16", "resnext101_32x8d"],
             "series_offset": 1000,
             "femur_threshold": 0.2,
             "tibia_threshold": 0.2,
@@ -10,14 +10,14 @@
             "monitoring": {
                 "enabled": true,
                 "influxdb": {
-                    "url": "http://localhost:8086",
+                    "url": "http://localhost:9051",
                     "token": "ai-inference-token-12345",
                     "org": "mercure-ai",
                     "bucket": "ai-inference-spc",
                     "timeout": 5.0
                 },
                 "prometheus": {
-                    "gateway_url": "http://localhost:9091",
+                    "gateway_url": "http://localhost:9052",
                     "job_name": "pediatric-leglength",
                     "instance": "pediatric-leglength-module",
                     "timeout": 5.0

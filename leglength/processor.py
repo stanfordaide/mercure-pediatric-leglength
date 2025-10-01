@@ -7,6 +7,27 @@ from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
+
+def get_pixel_spacing(dicom_dataset):
+    """
+    Get pixel spacing from DICOM dataset, trying multiple fields.
+    
+    Args:
+        dicom_dataset: PyDICOM dataset
+        
+    Returns:
+        tuple: (pixel_spacing_x, pixel_spacing_y) or None if not found
+    """
+    # Try PixelSpacing first (most common)
+    if hasattr(dicom_dataset, 'PixelSpacing') and dicom_dataset.PixelSpacing:
+        return dicom_dataset.PixelSpacing
+    
+    # Try ImagerPixelSpacing as fallback
+    if hasattr(dicom_dataset, 'ImagerPixelSpacing') and dicom_dataset.ImagerPixelSpacing:
+        return dicom_dataset.ImagerPixelSpacing
+    
+    return None
+
 """Image processing helpers with logging.
 
 This module is responsible for preparing DICOM images for model inference.
@@ -30,7 +51,9 @@ class ImageProcessor:
         self.logger.debug(f"Loaded DICOM: {dicom_path}, shape={self.dicom.pixel_array.shape}")
         image = self.dicom.pixel_array
         self.original_height, self.original_width = image.shape
-        self.pixel_spacing = self.dicom.PixelSpacing
+        self.pixel_spacing = get_pixel_spacing(self.dicom)
+        if self.pixel_spacing is None:
+            self.logger.warning(f"No PixelSpacing or ImagerPixelSpacing found in DICOM: {dicom_path}")
         self.logger.debug(f"Pixel spacing: {self.pixel_spacing}, original size: {self.original_height}x{self.original_width}")
         return image
 

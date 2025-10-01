@@ -81,6 +81,8 @@ data/*.dcm
 data/*.dicom
 *.dicom
 
+*.log
+
 # Development Scripts
 visualize_predictions.py
 setup_env.sh

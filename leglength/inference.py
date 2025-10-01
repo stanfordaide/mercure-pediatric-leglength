@@ -10,6 +10,27 @@ from .processor import ImageProcessor
 from .measurements import LegMeasurements
 
 
+def get_pixel_spacing(dicom_dataset):
+    """
+    Get pixel spacing from DICOM dataset, trying multiple fields.
+    
+    Args:
+        dicom_dataset: PyDICOM dataset
+        
+    Returns:
+        float: Pixel spacing value, or None if not found
+    """
+    # Try PixelSpacing first (most common)
+    if hasattr(dicom_dataset, 'PixelSpacing') and dicom_dataset.PixelSpacing:
+        return float(dicom_dataset.PixelSpacing[0])
+    
+    # Try ImagerPixelSpacing as fallback
+    if hasattr(dicom_dataset, 'ImagerPixelSpacing') and dicom_dataset.ImagerPixelSpacing:
+        return float(dicom_dataset.ImagerPixelSpacing[0])
+    
+    return None
+
+
 def inference_handler(
     models: list[str],
     dicom_path: str,
@@ -32,11 +53,34 @@ def inference_handler(
 
     # Read DICOM metadata
     dicom = pydicom.dcmread(dicom_path, stop_before_pixels=True)
-    pixel_spacing = float(dicom.PixelSpacing[0]) if hasattr(dicom, 'PixelSpacing') else None
+    pixel_spacing = get_pixel_spacing(dicom)
     
     if pixel_spacing is None:
-        logger.error(f"No PixelSpacing found in DICOM file: {dicom_path}")
-        raise ValueError("PixelSpacing is required for distance calculations")
+        logger.warning(f"No PixelSpacing or ImagerPixelSpacing found in DICOM file: {dicom_path}")
+        logger.info(f"Skipping image {dicom_path} - pixel spacing is required for distance calculations")
+        # Return a result indicating the image was skipped
+        return {
+            'skipped': True,
+            'reason': 'Missing pixel spacing (PixelSpacing or ImagerPixelSpacing)',
+            'dicom_path': dicom_path,
+            'dicom_metadata': {
+                'pixel_spacing': None,
+                'accession_number': getattr(dicom, 'AccessionNumber', None),
+                'patient_id': getattr(dicom, 'PatientID', None),
+                'study_instance_uid': getattr(dicom, 'StudyInstanceUID', None),
+                'series_instance_uid': getattr(dicom, 'SeriesInstanceUID', None),
+                'modality': getattr(dicom, 'Modality', None),
+                'study_date': getattr(dicom, 'StudyDate', None),
+                'series_description': getattr(dicom, 'SeriesDescription', None),
+                'manufacturer': getattr(dicom, 'Manufacturer', None),
+                'slice_thickness': getattr(dicom, 'SliceThickness', None),
+            },
+            'measurements': {},
+            'boxes': [],
+            'scores': [],
+            'labels': [],
+            'issues': ['Missing pixel spacing - cannot calculate measurements']
+        }
 
     dicom_metadata = {
         'pixel_spacing': pixel_spacing,

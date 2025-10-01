@@ -372,8 +372,10 @@ class DicomProcessor:
         
         self.logger.info(f"Processed {measurements_processed} measurements")
         
-        # Save debug image
-        debug_path = '/output/debug_qa_image.png'
+        # Save debug image with DICOM stem prefix
+        from pathlib import Path
+        dicom_stem = Path(dicom_path).stem
+        debug_path = f'/output/{dicom_stem}_debug_qa_image.png'
         cv2.imwrite(debug_path, visualization)
         self.logger.info(f"Debug image saved to {debug_path}")
         
