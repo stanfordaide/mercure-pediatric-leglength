@@ -42,6 +42,7 @@ RUN apt-get update -qq && \
         libxext6 \
         libxrender-dev \
         libgomp1 \
+        gosu \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -84,8 +85,9 @@ RUN chown -R mercureapp:mercureapp ${HOME_DIR} && \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python3 -c "import sys; sys.exit(0)" || exit 1
 
-# Switch to non-root user
-USER mercureapp
+# Don't switch users here - let the entrypoint handle it
+# This allows the entrypoint to fix permissions as root if needed
+# USER mercureapp
 
 # Add labels for better container management
 LABEL maintainer="Arogya Koirala" \

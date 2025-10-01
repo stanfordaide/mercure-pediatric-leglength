@@ -83,6 +83,26 @@ docker run -v $(pwd)/input:/input -v $(pwd)/output:/output \
     /input /output
 ```
 
+**Note on Permissions**: The container automatically handles output directory permissions. If you encounter permission issues, the container will run as root temporarily to fix permissions and then switch to a non-root user for security.
+
+### Advanced Usage
+
+For more control over user permissions, you can:
+
+1. **Run with specific user ID:**
+```bash
+docker run -v $(pwd)/input:/input -v $(pwd)/output:/output \
+    -e DOCKER_UID=$(id -u) -e DOCKER_GID=$(id -g) \
+    stanfordaide/pediatric-leglength
+```
+
+2. **Run with host user mapping:**
+```bash
+docker run -v $(pwd)/input:/input -v $(pwd)/output:/output \
+    --user $(id -u):$(id -g) \
+    stanfordaide/pediatric-leglength
+```
+
 ## Configuration Options
 
 ### **Analysis Mode**

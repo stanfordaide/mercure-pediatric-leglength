@@ -15,6 +15,27 @@ import torch
 logger = logging.getLogger(__name__)
 
 
+def get_pixel_spacing(dicom_dataset):
+    """
+    Get pixel spacing from DICOM dataset, trying multiple fields.
+    
+    Args:
+        dicom_dataset: PyDICOM dataset
+        
+    Returns:
+        tuple: (pixel_spacing_x, pixel_spacing_y) or None if not found
+    """
+    # Try PixelSpacing first (most common)
+    if hasattr(dicom_dataset, 'PixelSpacing') and dicom_dataset.PixelSpacing:
+        return dicom_dataset.PixelSpacing
+    
+    # Try ImagerPixelSpacing as fallback
+    if hasattr(dicom_dataset, 'ImagerPixelSpacing') and dicom_dataset.ImagerPixelSpacing:
+        return dicom_dataset.ImagerPixelSpacing
+    
+    return None
+
+
 class LegMeasurements:
     """Class to handle leg length measurements and DICOM SR generation."""
     
@@ -57,7 +78,10 @@ class LegMeasurements:
         """
         # Get pixel spacing from DICOM
         dcm = pydicom.dcmread(dicom_path)
-        self.pixel_spacing = dcm.PixelSpacing
+        self.pixel_spacing = get_pixel_spacing(dcm)
+        if self.pixel_spacing is None:
+            logger.error(f"No PixelSpacing or ImagerPixelSpacing found in DICOM: {dicom_path}")
+            return {}, ['Missing pixel spacing - cannot calculate measurements']
         pixel_spacing_x, pixel_spacing_y = float(self.pixel_spacing[0]), float(self.pixel_spacing[1])
         
         # Extract keypoint coordinates from bounding box centers

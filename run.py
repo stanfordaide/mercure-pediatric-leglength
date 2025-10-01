@@ -128,9 +128,88 @@ def validate_config(config: dict, log: logging.Logger) -> list:
     return errors
 
 
-def process_image(dicom_path: Path, output_dir: Path, config: dict, logger: logging.Logger) -> None:
+def convert_numpy_for_json(obj):
+    """Convert numpy arrays and other non-serializable objects to JSON-compatible format."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: convert_numpy_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_for_json(item) for item in obj]
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    elif isinstance(obj, Path):
+        return str(obj)
+    else:
+        return obj
+
+
+def save_results_to_json(results: dict, config: dict, dicom_path: Path, output_dir: Path, 
+                        series_id: str, accession_number: str = None, 
+                        processing_time: float = None, logger: logging.Logger = None) -> None:
+    """
+    Save comprehensive results to JSON file.
     
+    The JSON output contains:
+    - metadata: Processing information, timestamps, file paths, etc.
+    - configuration: All config parameters used for processing
+    - results: Complete inference results including:
+        - boxes: Bounding box coordinates for detected landmarks
+        - scores: Confidence scores for each detection
+        - labels: Point labels (1-8 for anatomical landmarks)
+        - measurements: Calculated leg length measurements
+        - uncertainties: Model uncertainty metrics (for ensemble mode)
+        - point_statistics: Statistics about point detections
+        - issues: Any problems or warnings during processing
+        - dicom_metadata: DICOM header information
+        - output_files: Paths to all generated output files
+        - individual_model_predictions: Raw predictions from each model (ensemble mode)
+    """
     
+    # Create comprehensive results dictionary
+    comprehensive_results = {
+        'metadata': {
+            'version': 'v0.2.0',
+            'module': 'LPCH Pediatric Leg Length Analysis',
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'processing_time_seconds': processing_time,
+            'input_file': str(dicom_path),
+            'input_filename': dicom_path.name,
+            'series_id': series_id,
+            'accession_number': accession_number,
+            'output_directory': str(output_dir),
+            'models_used': config.get('models', [])
+        },
+        'configuration': config,
+        'results': results
+    }
+    
+    # Convert numpy arrays and other non-serializable objects
+    serializable_results = convert_numpy_for_json(comprehensive_results)
+    
+    # Save to JSON file
+    stem = dicom_path.stem
+    json_output_path = output_dir / f'{stem}_complete_results.json'
+    try:
+        with open(json_output_path, 'w') as f:
+            json.dump(serializable_results, f, indent=2, sort_keys=True)
+        
+        if logger:
+            logger.info(f"Complete results saved to: {json_output_path}")
+            
+        # Also add the JSON file path to results
+        if 'output_files' not in serializable_results['results']:
+            serializable_results['results']['output_files'] = {}
+        serializable_results['results']['output_files']['complete_results_json'] = str(json_output_path)
+        
+    except Exception as e:
+        if logger:
+            logger.error(f"Failed to save results to JSON: {e}")
+        raise
+
+
+def process_image(dicom_path: Path, output_dir: Path, config: dict, logger: logging.Logger) -> dict:
+    """Process a single DICOM image and return comprehensive results."""
     
     results = inference_handler(
         models=config['models'],
@@ -140,6 +219,20 @@ def process_image(dicom_path: Path, output_dir: Path, config: dict, logger: logg
         logger=logger
     )
     
+    # Check if the image was skipped
+    if results.get('skipped', False):
+        logger.warning(f"Skipping DICOM {dicom_path.name}: {results.get('reason', 'Unknown reason')}")
+        # Still save a JSON result for the skipped image
+        stem = dicom_path.stem
+        json_output_path = output_dir / f'{stem}_complete_results.json'
+        try:
+            with open(json_output_path, 'w') as f:
+                json.dump(results, f, indent=2, sort_keys=True)
+            logger.info(f"Skipped image results saved to: {json_output_path}")
+        except Exception as e:
+            logger.error(f"Error saving results for skipped image: {e}")
+        
+        return results
     
     logger.info(f"Output directory: {output_dir}")
     
@@ -149,25 +242,33 @@ def process_image(dicom_path: Path, output_dir: Path, config: dict, logger: logg
     
     qa_dicom.is_implicit_VR = False
     qa_dicom.is_little_endian = True
-    qa_dicom.save_as(str(output_dir / 'qa_output.dcm'), write_like_original=False)
+    stem = dicom_path.stem
+    qa_dicom.save_as(str(output_dir / f'{stem}_qa_output.dcm'), write_like_original=False)
     
     # Create QA Table DICOM with combined visualization and tables
     models = config.get('models', [])
     qa_table_dicom = output_processor.get_qa_table_dicom(results, str(dicom_path), models)
     qa_table_dicom.is_implicit_VR = False
     qa_table_dicom.is_little_endian = True
-    qa_table_dicom.save_as(str(output_dir / 'qa_table_output.dcm'), write_like_original=False)
+    qa_table_dicom.save_as(str(output_dir / f'{stem}_qa_table_output.dcm'), write_like_original=False)
     
     # Save QA table as JPEG as well
     qa_table_image = output_processor._create_combined_qa_table_image(results, str(dicom_path), models)
     import cv2
-    cv2.imwrite(str(output_dir / 'qa_table_output.jpg'), qa_table_image)
+    cv2.imwrite(str(output_dir / f'{stem}_qa_table_output.jpg'), qa_table_image)
     
     # Create SR DICOM
     sr_dicom = output_processor.get_sr_dicom(results, str(dicom_path), config)
-    sr_dicom.save_as(str(output_dir / 'sr_output.dcm'), write_like_original=False)
+    sr_dicom.save_as(str(output_dir / f'{stem}_sr_output.dcm'), write_like_original=False)
     
-
+    # Add output file paths to results
+    results['output_files'] = {
+        'qa_dicom': str(output_dir / f'{stem}_qa_output.dcm'),
+        'qa_table_dicom': str(output_dir / f'{stem}_qa_table_output.dcm'),
+        'qa_table_image': str(output_dir / f'{stem}_qa_table_output.jpg'),
+        'sr_dicom': str(output_dir / f'{stem}_sr_output.dcm')
+    }
+    
     return results
     
 
@@ -446,6 +547,22 @@ def main():
                 start_time = time.time()
                 results = process_image(dicom_path, args.output_dir, config, logger)
                 end_time = time.time()
+                processing_time = end_time - start_time
+                
+                # Save comprehensive results to JSON
+                try:
+                    save_results_to_json(
+                        results=results,
+                        config=config,
+                        dicom_path=dicom_path,
+                        output_dir=args.output_dir,
+                        series_id=series_id,
+                        accession_number=accession_number,
+                        processing_time=processing_time,
+                        logger=logger
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to save comprehensive JSON results: {e}")
                 
                 # Record metrics
                 if monitor:
@@ -480,23 +597,30 @@ def main():
                         str(dicom_path)
                     )
                 
-                # Convert numpy arrays to lists for JSON serialization
-                def convert_numpy(obj):
-                    if isinstance(obj, np.ndarray):
-                        return obj.tolist()
-                    elif isinstance(obj, dict):
-                        return {k: convert_numpy(v) for k, v in obj.items()}
-                    elif isinstance(obj, list):
-                        return [convert_numpy(item) for item in obj]
-                    else:
-                        return obj
-                
+                # Log results summary (keep existing logging for backwards compatibility)
                 try:
-                    serializable_results = convert_numpy(results)
-                    logger.info(f"Results: {json.dumps(serializable_results, indent=2)}")
+                    serializable_results = convert_numpy_for_json(results)
+                    logger.info(f"Results summary: {len(results.get('boxes', []))} boxes, {len(results.get('measurements', {}))} measurements, {len(results.get('issues', []))} issues")
+                    logger.debug(f"Full results: {json.dumps(serializable_results, indent=2)}")
                 except Exception as e:
                     logger.info(f"Results summary: {len(results.get('boxes', []))} boxes, {len(results.get('measurements', {}))} measurements, {len(results.get('issues', []))} issues")
                     logger.debug(f"JSON serialization failed: {e}")
+                
+                # Log output files created
+                output_files = results.get('output_files', {})
+                logger.info("Generated output files:")
+                for output_type, file_path in output_files.items():
+                    if Path(file_path).exists():
+                        logger.info(f"  ✓ {output_type}: {Path(file_path).name}")
+                    else:
+                        logger.warning(f"  ✗ {output_type}: {Path(file_path).name} (not found)")
+                
+                # Specifically highlight the JSON results file
+                json_file = args.output_dir / 'complete_results.json'
+                if json_file.exists():
+                    logger.info(f"📄 Complete results saved to JSON: {json_file.name}")
+                else:
+                    logger.warning(f"⚠️  JSON results file not created: {json_file.name}")
                 
                 # Mark session as completed
                 if monitor:
@@ -506,7 +630,9 @@ def main():
             logger.error(f"Error processing series {series_id}: {e}")
             if monitor:
                 monitor.end_session(session_id, "failed")
-            raise
+            # Continue processing other images instead of failing completely
+            logger.info("Continuing to process remaining images...")
+            continue
             
             
         
