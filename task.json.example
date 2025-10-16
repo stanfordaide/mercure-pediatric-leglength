@@ -17,7 +17,7 @@
                     "timeout": 5.0
                 },
                 "prometheus": {
-                    "gateway_url": "http://localhost:9052",
+                    "gateway_url": "http://localhost:9053",
                     "job_name": "pediatric-leglength",
                     "instance": "pediatric-leglength-module",
                     "timeout": 5.0

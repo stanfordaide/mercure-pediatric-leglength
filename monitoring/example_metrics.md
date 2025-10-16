@@ -79,6 +79,68 @@ fields:
 time: 2024-01-15T10:30:00Z
 ```
 
+### PLL AI Image-Level Metrics
+This measurement includes both existing uncertainty metrics and new table-level quality features.
+
+```
+measurement: pll_ai_image_metrics
+tags:
+  patient_id: "12345"
+  study_id: "1.2.826.0.1.12345"
+  series_id: "1.2.826.0.1"
+  accession_number: "ACC001"
+  patient_gender: "M"
+  patient_age_group: "2-8"
+  scanner_manufacturer: "GE"
+  ai_model_version: "resnet101_vit_l_16_resnext101_32x8d"
+  time_of_day: "morning"
+  day_of_week: "monday"
+  week_of_month: "week2"
+  month: "january"
+  year: "2024"
+  day_type: "weekday"
+fields:
+  # Existing uncertainty metrics
+  image_dds: 0.15          # Detection Disagreement Score
+  image_lds: 2.3           # Localization Disagreement Score (mm)
+  image_ors: 0.08          # Outlier Risk Score
+  image_cds: 0.12          # Confidence Disagreement Score
+  processing_duration_ms: 4523
+  total_landmarks: 8
+  
+  # Table-level quality features (model agreement metrics)
+  mean_distance: 1.8       # Average pairwise distance between models (mm)
+  max_distance: 4.2        # Maximum pairwise distance (mm)
+  distance_std: 0.9        # Standard deviation of distances
+  distance_cv: 0.5         # Coefficient of variation for distances
+  overall_detection_rate: 0.95      # Average detection rate across all points
+  detection_consistency: 0.88       # 1 - std of detection rates
+  missing_point_ratio: 0.0          # Ratio of completely missing points
+  high_distance_ratio: 0.12         # Ratio of distances > 5mm
+  extreme_distance_ratio: 0.03      # Ratio of distances > 10mm
+  model_agreement_rate: 0.85        # Ratio of distances <= 3mm
+time: 2024-01-15T10:30:00Z
+```
+
+**Table-Level Quality Features Explained:**
+
+- `mean_distance`: Average pairwise distance between model predictions across all landmarks (mm). Lower is better.
+- `max_distance`: Maximum pairwise distance observed. Indicates worst-case disagreement.
+- `distance_std`: Standard deviation of pairwise distances. Measures consistency.
+- `distance_cv`: Coefficient of variation (std/mean). Normalized measure of variability.
+- `overall_detection_rate`: What fraction of points were detected by models on average.
+- `detection_consistency`: How consistent detection rates are across points (1 = perfect consistency).
+- `missing_point_ratio`: Fraction of anatomical points not detected by any model.
+- `high_distance_ratio`: Fraction of pairwise distances exceeding 5mm threshold.
+- `extreme_distance_ratio`: Fraction of pairwise distances exceeding 10mm threshold.
+- `model_agreement_rate`: Fraction of pairwise distances within 3mm agreement threshold.
+
+These metrics enable advanced quality monitoring and can be used to:
+- Flag images with poor model agreement for review
+- Track model performance degradation over time
+- Build quality control dashboards
+- Train decision trees for automated QC
+
 ## Prometheus Metrics Examples
 
 ### Processing Duration Histogram

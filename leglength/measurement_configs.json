@@ -15,22 +15,26 @@
         {
             "name": "PLL_R_FEM",
             "join_points": [1, "PLL_R_KNC"],
-            "meaning": "Right femur length measurement"
+            "meaning": "Right femur length measurement",
+            "distance_type": "vertical"
         },
         {
             "name": "PLL_R_TIB",
             "join_points": ["PLL_R_KNC", 7],
-            "meaning": "Right tibia length measurement"
+            "meaning": "Right tibia length measurement",
+            "distance_type": "vertical"
         },
         {
             "name": "PLL_L_FEM",
             "join_points": [2, "PLL_L_KNC"],
-            "meaning": "Left femur length measurement"
+            "meaning": "Left femur length measurement",
+            "distance_type": "vertical"
         },
         {
             "name": "PLL_L_TIB",
             "join_points": ["PLL_L_KNC", 8],
-            "meaning": "Left tibia length measurement"
+            "meaning": "Left tibia length measurement",
+            "distance_type": "vertical"
         }
     ]
 }

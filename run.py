@@ -589,7 +589,8 @@ def main():
                         'uncertainties': results.get('uncertainties', {}),
                         'point_statistics': results.get('point_statistics', {}),
                         'issues': results.get('issues', []),
-                        'image_metrics': results.get('image_metrics', {})
+                        'image_metrics': results.get('image_metrics', {}),
+                        'individual_model_predictions': results.get('individual_model_predictions', {})
                     }
                     monitor.record_performance_data(
                         session_id, 
