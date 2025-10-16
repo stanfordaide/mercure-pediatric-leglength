@@ -9,6 +9,7 @@ from datetime import datetime
 import psutil
 import os
 import calendar
+import numpy as np
 
 try:
     import torch
@@ -138,6 +139,141 @@ class MetricsCollector:
             'year': str(dt.year),
             'day_type': day_type
         }
+    
+    def _extract_table_level_features(self, individual_preds: Dict[str, Any], 
+                                     models: List[str], 
+                                     pixel_spacing: float) -> Dict[str, float]:
+        """
+        Extract table-level quality features from individual model predictions.
+        
+        These features capture model agreement and prediction quality across all points.
+        Based on the feature extraction logic used in the decision tree analysis.
+        
+        Args:
+            individual_preds: Dictionary of individual model predictions
+            models: List of model names
+            pixel_spacing: Pixel to mm conversion factor
+            
+        Returns:
+            Dictionary of table-level quality features
+        """
+        features = {}
+        num_models = len(models)
+        
+        if num_models < 2 or not individual_preds:
+            # Return default values for single model or no predictions
+            return {
+                'mean_distance': 0.0,
+                'max_distance': 0.0,
+                'distance_std': 0.0,
+                'distance_cv': 0.0,
+                'overall_detection_rate': 0.0,
+                'detection_consistency': 1.0,
+                'missing_point_ratio': 1.0,
+                'high_distance_ratio': 0.0,
+                'extreme_distance_ratio': 0.0,
+                'model_agreement_rate': 1.0
+            }
+        
+        # Store all distances and detections
+        all_distances = []
+        point_distances = {}
+        point_detections = {}
+        
+        # Extract features for each anatomical point (1-8)
+        for point_id in range(8):
+            target_label = point_id + 1  # Convert to 1-based
+            point_distances[point_id] = []
+            point_detections[point_id] = []
+            
+            # Get detection flags for each model
+            for model_name in models:
+                model_pred = individual_preds.get(model_name, {})
+                predictions = model_pred.get('predictions', {})
+                boxes = predictions.get('boxes', [])
+                labels = predictions.get('labels', [])
+                
+                # Check if this point was detected
+                detected = 0
+                for j, label in enumerate(labels):
+                    if label == target_label and j < len(boxes):
+                        detected = 1
+                        break
+                
+                point_detections[point_id].append(detected)
+            
+            # Calculate pairwise distances for detected points
+            model_positions = {}
+            for i, model_name in enumerate(models):
+                if point_detections[point_id][i] == 1:  # Only if detected
+                    model_pred = individual_preds.get(model_name, {})
+                    predictions = model_pred.get('predictions', {})
+                    boxes = predictions.get('boxes', [])
+                    labels = predictions.get('labels', [])
+                    
+                    # Find the box for this point
+                    for j, label in enumerate(labels):
+                        if label == target_label and j < len(boxes):
+                            box = boxes[j]
+                            center = [(box[0] + box[2])/2, (box[1] + box[3])/2]
+                            model_positions[i] = center
+                            break
+            
+            # Calculate pairwise distances
+            for i in range(num_models):
+                for j in range(i+1, num_models):
+                    if i in model_positions and j in model_positions:
+                        pos1 = model_positions[i]
+                        pos2 = model_positions[j]
+                        distance_pixels = np.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
+                        distance_mm = distance_pixels * pixel_spacing
+                        point_distances[point_id].append(distance_mm)
+                        all_distances.append(distance_mm)
+                    else:
+                        # Missing distance - use sentinel value
+                        point_distances[point_id].append(999.0)
+                        all_distances.append(999.0)
+        
+        # Create feature set
+        # 1. Global distance statistics
+        valid_distances = [d for d in all_distances if d < 999.0]
+        if valid_distances:
+            features['mean_distance'] = float(np.mean(valid_distances))
+            features['max_distance'] = float(np.max(valid_distances))
+            features['distance_std'] = float(np.std(valid_distances))
+            features['distance_cv'] = float(np.std(valid_distances) / (np.mean(valid_distances) + 1e-6))
+        else:
+            features['mean_distance'] = 999.0
+            features['max_distance'] = 999.0
+            features['distance_std'] = 0.0
+            features['distance_cv'] = 0.0
+        
+        # 2. Detection quality metrics
+        all_detection_rates = [np.mean(detections) for detections in point_detections.values()]
+        features['overall_detection_rate'] = float(np.mean(all_detection_rates))
+        features['detection_consistency'] = float(1.0 - np.std(all_detection_rates))
+        
+        # 3. Missing data severity
+        total_points = len(point_detections)
+        missing_points = sum(1 for detections in point_detections.values() if np.sum(detections) == 0)
+        features['missing_point_ratio'] = float(missing_points / total_points)
+        
+        # 4. Distance distribution
+        if valid_distances:
+            features['high_distance_ratio'] = float(np.mean([d > 5.0 for d in valid_distances]))
+            features['extreme_distance_ratio'] = float(np.mean([d > 10.0 for d in valid_distances]))
+        else:
+            features['high_distance_ratio'] = 1.0
+            features['extreme_distance_ratio'] = 1.0
+        
+        # 5. Model agreement quality
+        if valid_distances:
+            agreement_threshold = 3.0  # mm
+            features['model_agreement_rate'] = float(np.mean([d <= agreement_threshold for d in valid_distances]))
+        else:
+            features['model_agreement_rate'] = 0.0
+        
+        return features
     
     def start_session(self, session_id: str, config: Dict[str, Any]) -> None:
         """
@@ -446,20 +582,42 @@ class MetricsCollector:
                     'time': datetime.fromtimestamp(completion_time)
                 })
             
-            # PLL AI Image-Level Metrics
+            # PLL AI Image-Level Metrics (including table-level quality features)
             image_metrics = performance_data.get('image_metrics', {})
             if image_metrics:
+                # Base image metrics fields
+                fields = {
+                    'image_dds': float(image_metrics.get('image_dds', 0.0)),
+                    'image_lds': float(image_metrics.get('image_lds', 0.0)),
+                    'image_ors': float(image_metrics.get('image_ors', 0.0)),
+                    'image_cds': float(image_metrics.get('image_cds', 0.0)),
+                    'processing_duration_ms': int(processing_duration_ms),
+                    'total_landmarks': len(uncertainties)
+                }
+                
+                # Extract table-level quality features from individual model predictions
+                individual_preds = performance_data.get('individual_model_predictions', {})
+                models = config.get('models', [])
+                pixel_spacing = dicom_metadata.get('pixel_spacing', 1.0)
+                
+                if individual_preds and len(models) > 1:
+                    try:
+                        table_features = self._extract_table_level_features(
+                            individual_preds, 
+                            models, 
+                            pixel_spacing
+                        )
+                        # Add table-level features to the fields
+                        fields.update(table_features)
+                        self.logger.debug(f"Added {len(table_features)} table-level quality features")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to extract table-level features: {e}")
+                        # Continue without table-level features
+                
                 influx_data.append({
                     'measurement': 'pll_ai_image_metrics',
                     'tags': base_tags,
-                    'fields': {
-                        'image_dds': float(image_metrics.get('image_dds', 0.0)),
-                        'image_lds': float(image_metrics.get('image_lds', 0.0)),
-                        'image_ors': float(image_metrics.get('image_ors', 0.0)),
-                        'image_cds': float(image_metrics.get('image_cds', 0.0)),
-                        'processing_duration_ms': int(processing_duration_ms),
-                        'total_landmarks': len(uncertainties)
-                    },
+                    'fields': fields,
                     'time': datetime.fromtimestamp(completion_time)
                 })
             

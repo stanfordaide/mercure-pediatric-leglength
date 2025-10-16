@@ -87,7 +87,7 @@ data/*.dicom
 visualize_predictions.py
 setup_env.sh
 
-
+input-multiple*
 
 # macOS
 .DS_Store

@@ -69,6 +69,20 @@ Add monitoring configuration to your `task.json` inside the `settings` section:
 - Outlier detection
 - Clinical validation results
 
+### Image-Level Quality Metrics
+- Detection Disagreement Score (DDS): Model disagreement on point detection
+- Localization Disagreement Score (LDS): Spatial disagreement in mm
+- Outlier Risk Score (ORS): Probability of outlier points
+- Confidence Disagreement Score (CDS): Confidence variation across models
+
+### Table-Level Quality Features (NEW)
+Model agreement metrics calculated from individual model predictions:
+- **Distance Statistics**: Mean, max, std, and CV of pairwise distances between models
+- **Detection Quality**: Overall detection rate and consistency across points
+- **Missing Data**: Ratio of completely missing anatomical points
+- **Agreement Thresholds**: Ratios of high (>5mm), extreme (>10mm), and good (<3mm) agreement
+- **Use Cases**: Automated QC, quality dashboards, performance monitoring, decision tree training
+
 ### System Resource Metrics
 - CPU utilization (process and system-wide)
 - Memory usage (RSS, available system memory)
