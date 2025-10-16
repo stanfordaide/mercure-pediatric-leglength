@@ -82,7 +82,15 @@ class LegMeasurements:
         if self.pixel_spacing is None:
             logger.error(f"No PixelSpacing or ImagerPixelSpacing found in DICOM: {dicom_path}")
             return {}, ['Missing pixel spacing - cannot calculate measurements']
-        pixel_spacing_x, pixel_spacing_y = float(self.pixel_spacing[0]), float(self.pixel_spacing[1])
+        
+        # Handle both 2-value and single-value (isotropic) pixel spacing
+        if len(self.pixel_spacing) == 1:
+            # If only one value, use it for both x and y (isotropic spacing)
+            pixel_spacing_x = pixel_spacing_y = float(self.pixel_spacing[0])
+            logger.info(f"Using isotropic pixel spacing: {pixel_spacing_x} mm")
+        else:
+            # Standard case: separate x and y spacing
+            pixel_spacing_x, pixel_spacing_y = float(self.pixel_spacing[0]), float(self.pixel_spacing[1])
         
         # Extract keypoint coordinates from bounding box centers
         keypoints = {}
@@ -120,24 +128,40 @@ class LegMeasurements:
                 logger.warning(f"Missing points for measurement {name}")
                 continue
             
-            # Calculate Euclidean distance between points
+            # Get distance type (default to vertical)
+            distance_type = measure.get('distance_type', 'vertical')
+            
             p1 = keypoints[point1]
             p2 = keypoints[point2]
-            pixel_distance = np.sqrt(
-                (p2[0] - p1[0])**2 + 
-                (p2[1] - p1[1])**2
-            )
             
-            # Convert pixel distance to physical units
-            mm_distance = pixel_distance * np.sqrt(
-                (pixel_spacing_x**2 + pixel_spacing_y**2) / 2
-            )
+            # Calculate distance based on type
+            if distance_type == 'vertical':
+                # Vertical distance: y-coordinate difference only
+                pixel_distance = abs(p2[1] - p1[1])
+                # Convert pixel distance to physical units (using y-axis pixel spacing)
+                mm_distance = pixel_distance * pixel_spacing_y
+            elif distance_type == 'euclidean':
+                # Euclidean distance: straight line between points
+                pixel_distance = np.sqrt(
+                    (p2[0] - p1[0])**2 + 
+                    (p2[1] - p1[1])**2
+                )
+                # Convert pixel distance to physical units
+                mm_distance = pixel_distance * np.sqrt(
+                    (pixel_spacing_x**2 + pixel_spacing_y**2) / 2
+                )
+            else:
+                logger.warning(f"Unknown distance_type '{distance_type}' for measurement {name}, using vertical")
+                pixel_distance = abs(p2[1] - p1[1])
+                mm_distance = pixel_distance * pixel_spacing_y
+            
             cm_distance = mm_distance / 10.0
             
             # Store measurement data
             measurements[name] = {
                 'millimeters': mm_distance,
                 'centimeters': cm_distance,
+                'distance_type': distance_type,
                 'points': {
                     'start': {'x': float(p1[0]), 'y': float(p1[1])},
                     'end': {'x': float(p2[0]), 'y': float(p2[1])}
